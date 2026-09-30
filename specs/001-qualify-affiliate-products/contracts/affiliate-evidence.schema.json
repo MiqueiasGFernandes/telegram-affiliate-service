@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://telegram-affiliate-service.local/contracts/affiliate-evidence.schema.json",
+  "title": "Affiliate Evidence File",
+  "description": "Fresh eligibility, commission and share-link evidence produced by the official Central or an authorized integration.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    }
+  },
+  "$defs": {
+    "decimalMoney": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$"
+    },
+    "decimalPercent": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,2})(\\.[0-9]{1,4})?$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "productId",
+        "variationKey",
+        "eligible",
+        "affiliateUrl",
+        "commissionPercent",
+        "currency",
+        "capturedAt",
+        "validUntil",
+        "source",
+        "sourceReference",
+        "fingerprint"
+      ],
+      "properties": {
+        "productId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variationKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Use NO_VARIATION when the product has no variation identifier."
+        },
+        "eligible": {
+          "const": true
+        },
+        "affiliateUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "commissionPercent": {
+          "$ref": "#/$defs/decimalPercent"
+        },
+        "expectedCommissionAmount": {
+          "$ref": "#/$defs/decimalMoney"
+        },
+        "extraEarningsAmount": {
+          "$ref": "#/$defs/decimalMoney"
+        },
+        "currency": {
+          "const": "BRL"
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "validUntil": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "enum": [
+            "CENTRAL_MANUAL",
+            "AUTHORIZED_INTEGRATION"
+          ]
+        },
+        "sourceReference": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

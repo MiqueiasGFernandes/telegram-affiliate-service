@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://telegram-affiliate-service.local/contracts/run-summary.schema.json",
+  "title": "Affiliate Research Run Summary",
+  "description": "Sanitized terminal event emitted once for each scheduled or one-shot occurrence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "event",
+    "runId",
+    "executionKey",
+    "mode",
+    "status",
+    "scheduledFor",
+    "startedAt",
+    "finishedAt",
+    "durationMs",
+    "counts",
+    "persistence"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "event": {
+      "const": "affiliate_research.completed"
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "executionKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "SCHEDULED",
+        "ONCE"
+      ]
+    },
+    "status": {
+      "enum": [
+        "COMPLETED_WITH_SELECTION",
+        "COMPLETED_NO_SELECTION",
+        "FAILED",
+        "INTERRUPTED",
+        "SKIPPED_OVERLAP"
+      ]
+    },
+    "scheduledFor": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "examined",
+        "qualified",
+        "rejected",
+        "selected"
+      ],
+      "properties": {
+        "examined": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "qualified": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "selected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "selectedProductId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "persistence": {
+      "enum": [
+        "SAVED",
+        "DISABLED",
+        "FAILED"
+      ]
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

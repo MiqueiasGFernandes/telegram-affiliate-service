@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://telegram-affiliate-service.local/contracts/selected-product.schema.json",
+  "title": "Selected Affiliate Product",
+  "description": "Complete internal handoff produced by the research routine after final revalidation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "executionKey",
+    "productId",
+    "variationKey",
+    "title",
+    "ticketBand",
+    "currency",
+    "originalPrice",
+    "discountedPrice",
+    "discountAmount",
+    "discountPercent",
+    "affiliateUrl",
+    "expectedCommissionAmount",
+    "commissionPercent",
+    "commissionDerivation",
+    "mainImageUrl",
+    "salesEvidence",
+    "selectionRationale",
+    "capturedAt",
+    "validatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "executionKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "productId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "variationKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticketBand": {
+      "enum": [
+        "LOW",
+        "MEDIUM"
+      ]
+    },
+    "currency": {
+      "const": "BRL"
+    },
+    "originalPrice": {
+      "$ref": "#/$defs/decimalMoney"
+    },
+    "discountedPrice": {
+      "$ref": "#/$defs/decimalMoney"
+    },
+    "discountAmount": {
+      "$ref": "#/$defs/decimalMoney"
+    },
+    "discountPercent": {
+      "$ref": "#/$defs/decimalPercent"
+    },
+    "affiliateUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "expectedCommissionAmount": {
+      "$ref": "#/$defs/decimalMoney"
+    },
+    "commissionPercent": {
+      "$ref": "#/$defs/decimalPercent"
+    },
+    "commissionDerivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "percentDerived",
+        "amountDerived"
+      ],
+      "properties": {
+        "percentDerived": {
+          "type": "boolean"
+        },
+        "amountDerived": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mainImageUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "salesEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value",
+        "source",
+        "observedAt"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "BEST_SELLER_RANK",
+            "SOLD_QUANTITY",
+            "BEST_SELLER_LIST_POSITION"
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "selectionRationale": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "capturedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "validatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "decimalMoney": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]{1,2})?$"
+    },
+    "decimalPercent": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,2})(\\.[0-9]{1,4})?$"
+    }
+  }
+}
