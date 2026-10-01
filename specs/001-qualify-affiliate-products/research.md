@@ -2,8 +2,25 @@
 
 **Date**: 2026-09-30
 
-Todas as decisões abaixo foram verificadas em documentação oficial ou primária. Não restam
-pendências de clarificação para o design.
+**Status**: Phase 0 concluída. As decisões abaixo foram verificadas em documentação oficial ou
+primária e as clarificações da especificação estão resolvidas.
+
+## Escopo de categorias e viabilidade
+
+**Decision**: exigir de 1 a 10 IDs MLB únicos por ambiente. Antes de consultar rankings, validar por
+interfaces oficiais que cada ID existe no site MLB e identifica uma categoria folha. Processar
+todas as referências devolvidas por cada ranking, até 20 por categoria; o máximo de 200 é derivado,
+nunca um limite configurável que trunca resultados.
+
+**Rationale**: o limite configura um escopo operacional verificável e compatível com SC-005 e com
+a expiração de evidência de uma hora, mantendo ausência de scraping. Categoria inválida impede o
+início da pesquisa. A lista configurada substitui uma enumeração integral da árvore MLB, que tem
+milhares de folhas e não representa o escopo exibido na Central de Afiliados.
+
+**Alternatives considered**: enumerar toda a árvore pública em cada execução foi rejeitado por
+volume e incompatibilidade com a janela de evidência. Categorias inferidas do arquivo de evidências
+foram rejeitadas porque omitem categorias configuradas sem evidência para os produtos do snapshot.
+Limite de ofertas menor que o resultado oficial foi rejeitado por causar truncamento silencioso.
 
 ## Runtime e baseline
 
@@ -22,22 +39,25 @@ permanece Current nesta data e não é apropriado para produção. Node 20 já e
 
 ## Processo standalone e scheduler único
 
-**Decision**: iniciar com `NestFactory.createApplicationContext(AppModule)`, nunca chamar
-`listen()`, registrar `ScheduleModule.forRoot()` uma única vez e manter somente um job que aguarda
-a Promise do orquestrador. O cron terá nome estável, timezone configurado e
-`waitForCompletion: true`. O processo habilitará shutdown hooks e fechará contexto, scheduler e
-pool em `SIGTERM`/`SIGINT`.
+**Decision**: validar `SCHEDULE_CRON` e `SCHEDULE_TIMEZONE` antes de criar o application context;
+ambos são obrigatórios em todo ambiente e não possuem default, inclusive no modo `once`. Depois, iniciar com
+`NestFactory.createApplicationContext(AppModule)`, nunca chamar `listen()`, registrar
+`ScheduleModule.forRoot()` uma única vez e manter somente um job que aguarda a Promise do
+orquestrador. O cron terá nome estável, timezone IANA explícito e `waitForCompletion: true`. O
+processo habilitará shutdown hooks e fechará contexto, scheduler e pool em `SIGTERM`/`SIGINT`.
 
 **Rationale**: application context é a forma oficial de executar Nest sem listeners de rede.
-`waitForCompletion` descarta ticks locais enquanto a execução anterior ainda está ativa. Um job
-fino mantém todas as funcionalidades na mesma rotina, como requerido.
+Validar antes do bootstrap impede registro ou execução acidental com periodicidade implícita;
+timezone inválido também deve falhar fechado. `waitForCompletion` descarta ticks locais enquanto a
+execução anterior ainda está ativa. Um job fino mantém todas as funcionalidades na mesma rotina,
+como requerido.
 
 **Alternatives considered**: um cron externo com processo run-to-completion reduziria o tempo
 residente, mas contraria a decisão de manter o scheduler na aplicação. Vários jobs foram rejeitados
 por fragmentarem o fluxo e criarem estados parciais.
 
 **Sources**: [Standalone applications](https://docs.nestjs.com/standalone-applications),
-[Task scheduling](https://docs.nestjs.com/techniques/task-scheduling),
+[Task scheduling](https://docs.nestjs.com/application/task-scheduling),
 [Lifecycle events](https://docs.nestjs.com/fundamentals/lifecycle-events).
 
 ## Concorrência e idempotência
@@ -114,31 +134,65 @@ ambíguas.
 
 ## Fonte oficial para produtos e ranking
 
-**Decision**: consumir somente recursos públicos documentados do Mercado Livre. Usar `/highlights`
-para posições `BEST_SELLER`, operações atuais de itens em lote para metadados, a operação de preço
-para valor vigente e regular e reputação oficial do vendedor quando aplicável. `/trends` pode ser
-sinal auxiliar, mas nunca substitui vendas.
+**Decision**: validar oficialmente os IDs folha MLB configurados e consultar
+`/highlights/MLB/category/{categoryId}` para cada um. O recurso fornece até 20 posições
+`BEST_SELLER` por categoria e não oferece ranking global comparável. A resposta oficial documentada
+de ausência de ranking, somente após validar que o ID é uma categoria folha válida, resulta em
+`PROCESSED_NO_RANKING`; falhas técnicas, payloads parciais/malformados e demais erros tornam a
+categoria indisponível e a execução incompleta. Operações oficiais atuais resolvem metadados por
+tipo da referência e preço vigente/regular. `/trends` pode ser sinal auxiliar, mas nunca substitui
+vendas.
 
-**Rationale**: essas fontes fornecem ranking, título, imagem e preço com contrato público. A
-posição de `/highlights` é necessária porque quantidade vendida de anúncios alheios é restrita. A
-API de custos do anúncio representa comissão do vendedor, não ganho do afiliado.
+**Rationale**: essas fontes fornecem árvore, ranking, título, imagem e preço com contrato público.
+A posição de `/highlights` é necessária porque quantidade vendida de anúncios alheios é restrita.
+O endpoint documenta até 20 resultados e exige categoria folha; um `404` documentado por ausência
+de ranking é tratado como categoria integralmente processada sem candidatos, enquanto timeout,
+resposta parcial ou contrato inválido torna a categoria indisponível e toda a execução incompleta.
+A API de custos do anúncio representa comissão do vendedor, não ganho do afiliado.
 
-**Alternatives considered**: `sold_quantity` de itens alheios e endpoints antigos em
-descontinuação foram rejeitados. Scraping de páginas, endpoints internos e interceptação de tráfego
-foram rejeitados por ausência de contrato e incompatibilidade com os termos.
+**Alternatives considered**: consultar categorias pai foi rejeitado porque o ranking documentado
+exige categoria folha. `sold_quantity` de itens alheios e endpoints antigos em descontinuação foram
+rejeitados. Scraping de páginas, endpoints internos e interceptação de tráfego foram rejeitados por
+ausência de contrato e incompatibilidade com os termos.
 
 **Sources**: [Mais vendidos](https://developers.mercadolivre.com.br/pt_br/mais-vendidos-no-mercado-livre),
+[Categorias](https://developers.mercadolivre.com.br/pt_br/categorias-e-publicacoes),
+[Dump de categorias](https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao/dump-de-categorias),
 [Itens e buscas](https://developers.mercadolivre.com.br/pt_br/itens-e-buscas),
 [API de preços](https://developers.mercadolivre.com.br/pt_br/api-de-precos),
 [Reputação de vendedores](https://developers.mercadolivre.com.br/reputacao-de-vendedores),
 [Rate limit](https://developers.mercadolivre.com.br/pt_br/usuarios-e-aplicativos/rate-limit-erro-429).
 
+## Seleção determinística entre categorias
+
+**Decision**: ordenar candidatos qualificados separadamente em cada categoria pela posição oficial
+ascendente. O primeiro candidato válido forma o líder corrente daquela categoria. Ordenar somente
+os líderes correntes por percentual de desconto decrescente, valor esperado de comissão
+decrescente e `categoryId` ascendente. Revalidar o vencedor provisório; se uma mudança confirmada
+o invalidar, removê-lo, promover o próximo candidato da mesma categoria e recalcular a ordenação
+entre líderes. Se a revalidação atualizar preço, desconto ou comissão sem invalidar o candidato,
+atualizar seu snapshot e recalcular a ordenação antes de finalizar. Falha técnica inconclusiva torna
+a execução incompleta e impede seleção.
+
+**Rationale**: posições de categorias diferentes não medem a mesma população e não podem ser
+comparadas. O torneio entre líderes usa somente critérios comerciais comparáveis e termina com um
+desempate total, estável e auditável. A promoção após falha preserva a regra de que apenas um líder
+por categoria participa em cada iteração e atende à revalidação sem relaxar critérios.
+
+**Alternatives considered**: comparar diretamente posições de categorias diferentes e chamar o
+resultado de campeão global foi rejeitado por produzir uma alegação sem evidência. Manter somente
+o primeiro líder e desistir após sua falha foi rejeitado porque ignora candidatos ainda válidos.
+Promover todos os classificados de uma categoria simultaneamente foi rejeitado porque quebraria o
+funil de líderes definido na especificação.
+
 ## Elegibilidade, comissão e link de afiliado
 
-**Decision**: não automatizar a Central de Afiliados sem autorização formal. O primeiro release
-consome um arquivo validado de evidências produzido manualmente pela Central. Cada evidência inclui
-produto/variação, confirmação de elegibilidade, percentual, link oficial, coleta e validade. Uma
-porta substituível permite adotar integração autorizada no futuro sem alterar a rotina.
+**Decision**: não automatizar a Central de Afiliados. O primeiro release consome um arquivo
+validado de evidências produzido manualmente pelas ferramentas oficiais. Cada evidência inclui
+produto/variação, confirmação de elegibilidade, percentual, valor quando exibido, link oficial e
+instante de coleta. A validade efetiva termina exatamente uma hora após `capturedAt`, sem variável
+de ambiente e sem possibilidade de uma validade declarada ampliar esse limite. Uma porta
+substituível permite adotar integração oficialmente autorizada no futuro sem alterar a rotina.
 
 **Rationale**: não foi encontrada API pública documentada para elegibilidade específica,
 percentual/valor de comissão, Ganhos Extras ou geração do link. As instruções oficiais direcionam o
@@ -148,7 +202,8 @@ compatível com a constituição é rejeitar o candidato.
 
 **Alternatives considered**: Playwright/Selenium, endpoints privados e cálculo pela taxa do
 vendedor foram rejeitados. Uma API privada/parceria pode ser usada somente após acesso formal e
-contrato documentado. Uma tabela manual sem validade foi rejeitada por permitir comissão obsoleta.
+contrato documentado. Validade configurável ou fornecida pelo operador foi rejeitada porque
+permitiria exceder a janela de uma hora decidida na especificação.
 
 **Sources**: [Termos do Programa de Desenvolvedores](https://developers.mercadolivre.com.br/pt_br/termos-e-condicoes),
 [Como gerar links](https://www.mercadolivre.com.br/l/comece-a-recomendar),
@@ -237,8 +292,8 @@ catálogo, evidência, armazenamento, relógio e observabilidade; adapters Nest/
 implementam essas portas. A composição usa tokens `Symbol` e factory/custom providers.
 
 **Rationale**: Dependency Inversion mantém regras apontando para dentro. Portas orientadas ao use
-case atendem Interface Segregation; suites de contrato asseguram que PostgreSQL/no-op e
-manual/autorizado respeitem Liskov Substitution. Scheduler fino, policies de domínio e adapters
+case atendem Interface Segregation; suites de contrato asseguram que PostgreSQL/no-op e o adapter
+manual respeitem Liskov Substitution. Scheduler fino, policies de domínio e adapters
 específicos preservam Single Responsibility e permitem extensão sem alterar o núcleo.
 
 **Alternatives considered**: decorators Nest e TypeORM no domínio foram rejeitados. Repository
@@ -330,9 +385,13 @@ segurança.
 [Compose config](https://docs.docker.com/reference/cli/docker/compose/config/),
 [Compose logs](https://docs.docker.com/reference/cli/docker/compose/logs/).
 
-## External Constraint Resolved
+## External Constraints
 
 A extração totalmente automática da Central não é implementável com um contrato público conhecido
 e não será simulada por scraping. O design resolve essa limitação com uma entrada manual explícita,
-validada e expirada por tempo. Portanto, o plano é implementável e compatível, mas a automação
-integral de comissão/link permanece condicionada a uma futura autorização formal do Mercado Livre.
+validada e expirada invariavelmente uma hora após a coleta. Portanto, o plano é implementável e
+compatível, mas a automação integral de comissão/link permanece condicionada a uma futura
+autorização formal do Mercado Livre.
+
+Uma integração automática futura de elegibilidade/comissão/link exige contrato oficial ou
+autorização formal; não é requisito para o primeiro release com evidência manual.

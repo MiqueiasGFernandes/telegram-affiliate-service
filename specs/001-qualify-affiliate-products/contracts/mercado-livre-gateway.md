@@ -1,93 +1,107 @@
 # Mercado Livre Gateway Contract
 
-Esta porta isola o domínio das APIs públicas do Mercado Livre. Ela é outbound-only e não cria um
-servidor HTTP na aplicação.
+Esta porta isola o domínio das APIs públicas oficiais do Mercado Livre. Ela é outbound-only e não
+cria um servidor HTTP na aplicação. O processo não lê nem automatiza a Central de Afiliados.
 
 ## Operations
 
-### `listBestSellerCandidates(categoryId, limit)`
+### `validateLeafCategories(categoryIds)`
 
-Obtém posições oficiais de mais vendidos para `MLB` e retorna no máximo o limite configurado.
+Valida em chamadas oficiais, antes de consultar qualquer ranking, de 1 a 10 IDs únicos. Todo ID
+deve existir em MLB e ser uma categoria folha. ID de outro site, inexistente ou não folha falha na
+validação da configuração e impede a pesquisa.
 
-Output por candidato:
+### `getBestSellerRanking(categoryId)`
 
-- tipo oficial da referência;
-- identificador oficial;
-- categoria;
-- posição de ranking positiva;
-- instante da observação.
+Consulta o ranking oficial da categoria validada e retorna todas as referências fornecidas pelo
+Mercado Livre, até o máximo documentado de 20. O chamador não passa um limite que possa truncar a
+resposta.
 
-Somente tipos que possam ser resolvidos por um caminho público documentado seguem para a próxima
-etapa. Tipos desconhecidos ou não resolvíveis geram rejeição explícita; nunca acionam scraping.
+Resultado discriminado:
 
-### `getItems(references)`
+- `RANKING_AVAILABLE`: query data validada e lista completa de até 20 referências com tipo e
+  identificador oficial. Quando a origem omite `position`, usar a ordem estável da lista, baseada
+  no índice de 1 a 20, conforme FR-009. Posição explicitamente repetida ou resposta fora de ordem
+  sem posição utilizável é erro contratual.
+- `NO_RANKING`: somente para a resposta 404 documentada de ausência de ranking para uma categoria
+  folha previamente validada (`Dimension CATEGORY with id ... not found`). A categoria conta como
+  processada e gera zero referências.
+- `UNAVAILABLE`: falha técnica ou contratual, como timeout, autenticação/autorização, rate limit
+  após retries, resposta parcial/malformada, outro 404 ou outro erro. A categoria fica indisponível
+  e a execução incompleta.
 
-Resolve metadados em lote pela operação oficial atual, preservando a associação por referência.
+Uma lista vazia só é considerada processada quando a resposta satisfaz o contrato oficial. Resposta
+inválida nunca é interpretada como ausência de ranking.
 
-Output normalizado:
+### `resolveRankedReferences(references)`
 
-- produto e variação;
-- título;
-- categoria e condição;
-- status/disponibilidade;
-- vendedor necessário para a política;
-- URL da imagem principal;
-- URL pública individual do produto.
+Resolve referências tipadas somente por operações oficiais documentadas compatíveis com o tipo:
 
-Uma resposta parcial permanece parcial: o gateway não inventa item nem reaproveita posição de
-outro candidato.
+- `ITEM`: detalhe individual ou `/items/bulk?ids=` para metadados.
+- `PRODUCT`: `/products/{productId}` para metadados do catálogo; só segue como oferta quando uma
+  publicação individual comprável correspondente puder ser identificada por operação oficial.
+- `USER_PRODUCT`: `/user-products/{userProductId}` para dados do produto e operação oficial
+  documentada para a condição de venda associada, quando disponível.
+
+Se as operações documentadas não fornecerem dados comerciais atuais e publicação comprável, a
+referência é rejeitada como não resolvível para esta execução. Nunca usar browser, endpoint não
+documentado ou scraping. A implementação preserva `categoryId`, posição efetiva, posição declarada
+quando houver, tipo e ID de origem ao associar metadados normalizados.
+
+Saída normalizada por referência resolvida:
+
+- identidade do produto e variação (`NO_VARIATION` quando não houver variação);
+- título, categoria, condição e disponibilidade;
+- vendedor apenas quando a política exigir atributo público de reputação;
+- URL da imagem principal e URL pública individual do produto.
+
+Uma referência oficial que não possa ser resolvida pelo contrato suportado é rejeitada com motivo
+estável. Nunca aciona navegador, scraping ou endpoint interno. Resposta parcial é preservada como
+falha explícita, sem inventar metadados ou reutilizar dados de outra referência.
 
 ### `getSalePrice(itemReference)`
 
-Obtém preço vigente e preço regular pela operação oficial de preços.
-
-Output:
-
-- moeda;
-- `amount` vigente;
-- `regularAmount` original;
-- instante da observação.
-
-Campos legados de preço do detalhe do item não substituem esta operação quando estiverem
-descontinuados ou divergentes.
+Obtém preço vigente e preço regular pela operação oficial de preços. Retorna moeda, valores decimais
+exatos e instante observado. Campos legados divergentes não substituem a operação atual.
 
 ### `getSellerReputation(sellerId)`
 
-Obtém somente os atributos de reputação necessários à política. Dados pessoais do vendedor não
-entram no domínio nem são persistidos.
+Obtém somente atributos públicos necessários à política. Dados pessoais do vendedor não entram no
+domínio nem são persistidos.
 
 ## Authentication
 
 - OAuth 2.0 oficial com refresh token rotativo.
-- Credenciais fornecidas pelo mecanismo de segredos, nunca por tabela de negócio.
+- Credenciais fornecidas por mecanismo de segredos, nunca por tabela de negócio.
 - Falha de refresh encerra a execução com `AUTHENTICATION_FAILED`.
 - O gateway não automatiza senha, MFA, CAPTCHA, cookies ou sessão de navegador.
 
-## Resilience
+## Resilience and Completion
 
-- Todas as operações têm timeout explícito.
-- Concorrência nunca excede `MELI_MAX_CONCURRENCY`.
-- `429` respeita `Retry-After`.
-- Retry com backoff exponencial e jitter aplica-se somente a timeout, falha de transporte e status
-  transitório documentado.
-- Erros de autenticação, autorização, contrato, validação e item inexistente não recebem retry
-  cego.
-- Se alguma página/lote necessário não for obtido, a pesquisa recebe status incompleto e não pode
-  gerar seleção.
+- Todas as operações têm timeout explícito e concorrência limitada.
+- `429` respeita `Retry-After`; retries limitados com backoff/jitter aplicam-se apenas a falhas
+  transitórias documentadas.
+- Falha técnica em qualquer ranking de categoria configurada marca a execução incompleta, sem
+  produto selecionado.
+- `NO_RANKING` para folha previamente validada é uma resposta de negócio completa, não falha.
+- Cada ranking validado fornece no máximo 20 referências. Até dez categorias geram no máximo 200
+  referências brutas; o sistema processa todas, sem limite de corte configurável.
 
 ## Data Provenance
 
-Cada valor normalizado mantém operação de origem, identificador do item e instante da coleta. Raw
-payload pode existir apenas em memória para mapeamento e não é persistido ou registrado. Fixtures
-de contrato devem ser mínimas, sanitizadas e versionadas.
+Cada valor normalizado mantém operação de origem, identificador, categoria, posição e instante da
+coleta. A mesma oferta que aparece em rankings diferentes recebe uma única avaliação comercial,
+mantendo uma entrada de ranking separada por categoria. Payload bruto pode existir apenas em
+memória para mapeamento e nunca é persistido ou registrado.
 
 ## Explicitly Unsupported
 
-- leitura automatizada da Central de Afiliados;
+- leitura automatizada ou scraping da Central de Afiliados;
 - endpoints internos descobertos por browser/devtools;
-- scraping, Playwright, Selenium ou interceptação de tráfego;
-- inferir comissão do afiliado a partir de custo/taxa do vendedor;
+- Playwright, Selenium ou interceptação de tráfego;
+- inferir comissão de afiliado a partir de custo/taxa do vendedor;
 - usar tendências, avaliações ou texto promocional como substituto de ranking de vendas;
-- gerar link para busca, categoria ou ranking em vez da página individual do produto.
+- link para busca, categoria ou ranking em vez da página individual do produto.
 
-Elegibilidade, percentual e link são fornecidos separadamente pelo contrato de evidência afiliada.
+Elegibilidade, percentual e link são fornecidos por arquivo de evidências coletadas manualmente nas
+ferramentas oficiais.

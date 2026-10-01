@@ -8,13 +8,26 @@
 
 **Input**: User description: "Crie uma rotina de pesquisa na minha página de Central de Afiliados no Meli para encontrar produtos de low/médio ticket qualificáveis. Esta análise deve selecionar um dos produtos mais vendidos para ser publicado e extrair dele preço original, preço com desconto (atrativo ao público), meu link de afiliado do produto para compartilhamento, valor esperado de comissão/percentual de ganho, título do produto e imagem principal do produto"
 
+## Clarifications
+
+### Session 2026-09-30
+
+- Q: Você prefere substituir o scraping por um login manual com coleta oficial, ou condicionar a automação do navegador a uma autorização escrita do Mercado Livre? → A: Login manual e coleta por APIs/ferramentas oficiais, sem scraping automatizado.
+- Q: Por quanto tempo uma evidência manual de elegibilidade, comissão e link deve permanecer válida antes de exigir nova coleta? → A: 1 hora.
+- Q: A aplicação deve exigir que a periodicidade do scheduler seja configurada em cada ambiente ou usar um intervalo padrão? → A: Periodicidade obrigatoriamente configurada, sem padrão.
+- Q: A rotina deve pesquisar uma única categoria por execução ou combinar produtos de várias categorias? → A: Todas as categorias disponíveis no escopo configurado.
+- Q: Como a rotina deve escolher um único produto quando os primeiros colocados pertencem a categorias cujos rankings não são comparáveis entre si? → A: Comparar os líderes de cada categoria por desconto, comissão e identificador da categoria.
+- Q: Qual conjunto de categorias a rotina deve processar em cada execução? → A: Todas as categorias folha configuradas, entre 1 e 10 por ambiente.
+- Q: Quando o líder de uma categoria falhar na revalidação por uma mudança confirmada da oferta, como a rotina deve continuar? → A: Promover e revalidar o próximo candidato qualificado da mesma categoria e recalcular a comparação entre líderes.
+- Q: Como a rotina deve tratar uma categoria configurada válida quando o Mercado Livre informa oficialmente que ela não possui ranking de mais vendidos? → A: Marcar a categoria como processada sem ranking e continuar; somente falhas técnicas tornam a execução incompleta.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Qualificar ofertas de baixo e médio ticket (Priority: P1)
 
-Como responsável pelo canal de afiliados, quero pesquisar as ofertas disponíveis no meu perfil e
-separar somente produtos que atendam à política de preço, desconto, elegibilidade, popularidade e
-completude, para não promover ofertas inadequadas ou sem evidência suficiente.
+Como responsável pelo canal de afiliados, quero pesquisar por interfaces oficiais as ofertas
+disponíveis e separar somente produtos que atendam à política de preço, desconto, elegibilidade,
+popularidade e completude, para não promover ofertas inadequadas ou sem evidência suficiente.
 
 **Why this priority**: Sem um conjunto confiável de candidatos, qualquer seleção ou conteúdo
 posterior pode divulgar uma oferta inválida, pouco atrativa ou não comissionável.
@@ -25,11 +38,12 @@ cada rejeição, sem realizar seleção final ou publicação.
 
 **Acceptance Scenarios**:
 
-1. **Given** uma sessão autorizada, uma política válida e ofertas com diferentes preços e
-   descontos, **When** a pesquisa é executada, **Then** somente ofertas que satisfazem todos os
-   critérios são qualificadas.
-2. **Given** uma pesquisa com múltiplas páginas e uma oferta repetida, **When** todo o escopo é
-   analisado, **Then** cada produto único é avaliado uma única vez e nenhuma página é ignorada.
+1. **Given** uma autorização oficial válida, evidências afiliadas obtidas manualmente, uma política
+   válida e ofertas com diferentes preços e descontos, **When** a pesquisa é executada, **Then**
+   somente ofertas que satisfazem todos os critérios são qualificadas.
+2. **Given** uma pesquisa com referências repetidas no ranking de uma ou mais categorias, **When**
+   todo o escopo é analisado, **Then** cada produto e variação são avaliados uma única vez e suas
+   posições por categoria são preservadas.
 3. **Given** uma oferta sem elegibilidade, disponibilidade, desconto mínimo, popularidade,
    comissão ou algum dado obrigatório, **When** ela é avaliada, **Then** é rejeitada com um motivo
    específico e não aparece entre os candidatos.
@@ -38,11 +52,11 @@ cada rejeição, sem realizar seleção final ou publicação.
 
 ---
 
-### User Story 2 - Selecionar o produto mais vendido elegível (Priority: P2)
+### User Story 2 - Selecionar um líder de categoria elegível (Priority: P2)
 
-Como responsável pelo canal, quero que a rotina escolha exatamente um dos candidatos com a melhor
-evidência comparável de vendas, para priorizar produtos com maior aceitação do público sem abrir
-mão dos critérios de preço e atratividade.
+Como responsável pelo canal, quero que a rotina pesquise todas as categorias folha configuradas
+para o ambiente e escolha exatamente um dos líderes de categoria qualificados, para priorizar
+produtos com evidência de alta aceitação sem alegar uma liderança global que a origem não fornece.
 
 **Why this priority**: A seleção transforma o conjunto qualificado em uma decisão acionável e
 reproduzível para o fluxo posterior de divulgação.
@@ -53,13 +67,21 @@ pelas regras de ordenação definidas.
 
 **Acceptance Scenarios**:
 
-1. **Given** candidatos qualificados com indicadores de vendas comparáveis, **When** a seleção é
-   executada, **Then** o candidato com o indicador mais forte é escolhido.
-2. **Given** candidatos empatados no indicador de vendas, **When** a seleção é executada, **Then**
-   vence, em ordem, o maior percentual de desconto, o maior valor esperado de comissão e a ordem
-   estável apresentada pela origem.
-3. **Given** candidatos cujos indicadores de popularidade não são comparáveis, **When** a seleção é
-   executada, **Then** nenhum deles é escolhido com base em suposição e a limitação é registrada.
+1. **Given** candidatos qualificados em cada categoria configurada, **When** a seleção é executada,
+   **Then** somente o candidato qualificado mais bem posicionado de cada categoria avança como
+   líder.
+2. **Given** líderes de categorias diferentes, **When** a seleção final é executada, **Then** vence,
+   em ordem, o maior percentual de desconto, o maior valor esperado de comissão e o identificador
+   da categoria em ordem ascendente.
+3. **Given** rankings de categorias diferentes que não são comparáveis entre si, **When** a seleção
+   termina, **Then** o resultado identifica o produto como líder de sua categoria e não como o mais
+   vendido global do site.
+4. **Given** que uma ou mais categorias configuradas não puderam ser analisadas integralmente,
+   **When** a pesquisa termina, **Then** a execução é marcada como incompleta e não produz produto
+   selecionado.
+5. **Given** que um líder falha na revalidação por uma mudança confirmada da oferta, **When** ainda
+   existe candidato qualificado em sua categoria, **Then** o próximo candidato pela posição oficial
+   é promovido, revalidado e a comparação entre líderes é recalculada.
 
 ---
 
@@ -92,23 +114,34 @@ publicar em canal externo.
 
 ### Edge Cases
 
-- A sessão do perfil expira antes ou durante a pesquisa.
-- A origem carrega somente parte dos resultados, repete produtos entre páginas ou altera a ordem
-  durante a execução.
+- A autorização da integração oficial expira antes ou durante a pesquisa.
+- A evidência afiliada manual está ausente, foi coletada há mais de uma hora ou não corresponde ao
+  produto e à variação.
+- A origem carrega somente parte das referências do ranking ou altera a ordem durante a execução.
 - Não há ofertas dentro das faixas configuradas de baixo e médio ticket.
 - O preço promocional é igual ou superior ao preço original, ou o desconto exibido diverge do
   desconto calculado.
 - O produto possui variações com preços, imagens, disponibilidade ou comissão diferentes.
 - O produto fica indisponível ou muda de preço entre a qualificação e a seleção final.
-- Há empate em vendas, desconto e comissão entre dois ou mais candidatos.
+- O líder de uma categoria falha na revalidação e não há outro candidato qualificado naquela
+  categoria para promover.
+- A revalidação falha tecnicamente e não permite confirmar se o líder continua válido.
+- Há empate em posição, desconto e comissão entre líderes de duas ou mais categorias.
 - A origem apresenta apenas um selo ou posição de popularidade, sem quantidade numérica de vendas.
 - A origem não apresenta indicador de vendas comparável para nenhum candidato.
+- A lista configurada está ausente, contém menos de uma ou mais de dez categorias, possui IDs
+  duplicados ou inclui uma categoria que não é uma folha válida do site MLB.
+- O Mercado Livre informa oficialmente que uma categoria folha válida não possui ranking de mais
+  vendidos.
+- Uma categoria configurada não pode ser consultada integralmente por falha técnica ou resposta
+  incompleta.
 - O valor e o percentual de comissão exibidos divergem além do arredondamento monetário esperado.
 - O link de afiliado não pode ser gerado, está inválido ou conduz a outro produto ou variação.
 - A imagem principal está ausente, inacessível ou não corresponde à variação selecionada.
 - Valores monetários usam separadores, moeda ou arredondamento diferentes dos esperados pela
   política configurada.
 - Uma interrupção deixa a pesquisa incompleta antes que todo o escopo seja analisado.
+- A periodicidade está ausente ou possui um valor inválido quando o scheduler inicia.
 
 ## Requirements *(mandatory)*
 
@@ -117,10 +150,13 @@ publicar em canal externo.
 - **FR-001**: A rotina MUST exigir uma política de qualificação válida antes da pesquisa, contendo
   moeda, limites inclusivos e não sobrepostos para baixo e médio ticket e percentual mínimo de
   desconto atrativo.
-- **FR-002**: A rotina MUST pesquisar somente com uma sessão autorizada do perfil de afiliado e
-  MUST encerrar sem seleção quando a autorização estiver ausente ou expirada.
-- **FR-003**: A rotina MUST analisar todas as ofertas únicas disponíveis no escopo de pesquisa
-  configurado, incluindo todas as páginas de resultados, antes de declarar a pesquisa completa.
+- **FR-002**: A rotina MUST pesquisar somente por interfaces oficiais documentadas e com
+  autorização válida, encerrando sem seleção quando a autorização estiver ausente ou expirada.
+- **FR-003**: A rotina MUST exigir entre 1 e 10 identificadores únicos de categorias folha válidas
+  do site MLB configurados em cada ambiente e MUST analisar todas as categorias configuradas e
+  todas as referências únicas retornadas pelo ranking oficial de cada uma, sem truncamento, antes
+  de declarar a pesquisa completa; resposta oficial que informe ausência de ranking conta como
+  categoria processada sem candidatos.
 - **FR-004**: A rotina MUST identificar ofertas repetidas pelo produto e variação correspondentes,
   evitando avaliá-las mais de uma vez na mesma execução.
 - **FR-005**: Para cada oferta avaliada, a rotina MUST registrar o instante da coleta e a evidência
@@ -133,29 +169,36 @@ publicar em canal externo.
   MUST calcular valor e percentual de desconto sem substituir os valores observados na origem.
 - **FR-008**: A rotina MUST rejeitar a oferta quando preço ou desconto exibido e calculado forem
   incompatíveis além do arredondamento da moeda.
-- **FR-009**: A rotina MUST usar somente evidência de vendas fornecida pela Central de Afiliados,
-  priorizando quantidade numérica, posição explícita em ranking e, por último, ordem estável em uma
-  lista identificada como mais vendida; avaliações ou texto promocional não podem substituir essa
-  evidência.
-- **FR-010**: A rotina MUST capturar o valor esperado e o percentual de comissão exibidos; quando
-  apenas um estiver disponível, MUST derivar o outro a partir do preço com desconto e marcar o
-  campo derivado.
+- **FR-009**: A rotina MUST usar somente evidência de vendas fornecida por interface oficial do
+  Mercado Livre, priorizando quantidade numérica, posição explícita em ranking e, por último, ordem
+  estável em uma lista identificada como mais vendida; avaliações ou texto promocional não podem
+  substituir essa evidência.
+- **FR-010**: A rotina MUST importar da evidência afiliada obtida manualmente o percentual e, quando
+  disponível, o valor esperado de comissão; quando apenas o percentual estiver disponível, MUST
+  derivar o valor a partir do preço com desconto e marcar o campo derivado.
 - **FR-011**: A rotina MUST rejeitar a oferta quando valor e percentual de comissão forem ausentes
   ou inconsistentes além do arredondamento monetário.
-- **FR-012**: A rotina MUST gerar o link de compartilhamento associado ao perfil autorizado e MUST
-  validar que o destino corresponde ao produto e à variação avaliados.
+- **FR-012**: A rotina MUST importar o link de compartilhamento gerado manualmente por ferramenta
+  oficial associada ao perfil autorizado e MUST validar que o destino corresponde ao produto e à
+  variação avaliados.
 - **FR-013**: Título, preços, comissão, imagem, disponibilidade e link MUST representar o mesmo
   produto e a mesma variação.
-- **FR-014**: Depois da qualificação, a rotina MUST ordenar candidatos pelo indicador comparável de
-  vendas e MUST selecionar exatamente um candidato com a posição mais alta.
-- **FR-015**: Empates MUST ser resolvidos, nesta ordem, pelo maior percentual de desconto, maior
-  valor esperado de comissão e ordem estável apresentada pela origem.
+- **FR-014**: Depois da qualificação, a rotina MUST ordenar separadamente os candidatos de cada
+  categoria configurada pelo indicador oficial de vendas e MUST manter somente o candidato
+  qualificado mais bem posicionado de cada categoria como líder.
+- **FR-015**: A seleção entre líderes de categorias MUST ser resolvida, nesta ordem, pelo maior
+  percentual de desconto, maior valor esperado de comissão e identificador da categoria em ordem
+  ascendente.
 - **FR-016**: A rotina MUST produzir no máximo um produto selecionado por execução e MUST produzir
   nenhum quando a pesquisa estiver incompleta ou não houver candidato totalmente qualificado.
-- **FR-017**: Imediatamente antes da finalização, a rotina MUST revalidar disponibilidade, preços,
-  elegibilidade, comissão, imagem e destino do link do candidato selecionado.
-- **FR-018**: Se o primeiro candidato falhar na revalidação, a rotina MUST registrar o motivo e
-  considerar o próximo candidato segundo a mesma ordenação, sem relaxar critérios.
+- **FR-017**: Imediatamente antes da finalização, a rotina MUST revalidar disponibilidade, preços e
+  imagem nas interfaces oficiais, além da validade e consistência da evidência afiliada e do
+  destino do link do candidato selecionado.
+- **FR-018**: Quando um líder falhar na revalidação por uma mudança confirmada da oferta, a rotina
+  MUST registrar o motivo, removê-lo da fila de sua categoria, promover e revalidar o próximo
+  candidato qualificado pela posição oficial e recalcular a comparação entre líderes; MUST repetir
+  esse processo sem relaxar critérios até selecionar um produto ou esgotar as filas. Uma falha
+  técnica inconclusiva na revalidação MUST tornar a execução incompleta e impedir a seleção.
 - **FR-019**: O pacote final MUST conter identificador do produto e da variação, título, faixa de
   ticket, preço original, preço com desconto, valor e percentual de desconto, link de afiliado,
   valor e percentual esperado de comissão, imagem principal, evidência de vendas, justificativa da
@@ -170,21 +213,42 @@ publicar em canal externo.
 - **FR-023**: Saídas e registros MUST NOT expor credenciais, cookies, dados de sessão ou parâmetros
   secretos do perfil de afiliado.
 - **FR-024**: Esta feature MUST encerrar seu escopo ao entregar o pacote do produto selecionado;
-  geração de texto ou imagem promocional, agendamento e publicação no Telegram ficam fora do
-  escopo.
+  geração de texto ou imagem promocional e publicação no Telegram ficam fora do escopo.
+- **FR-025**: A rotina MUST NOT automatizar login, navegação ou extração da Central de Afiliados e
+  MUST NOT consumir canais internos não documentados; login e coleta de evidência afiliada são
+  ações manuais realizadas pelas ferramentas oficiais.
+- **FR-026**: A evidência afiliada MUST expirar uma hora após o instante da coleta; evidência mais
+  antiga MUST reprovar o candidato mesmo que declare uma validade posterior.
+- **FR-027**: O scheduler MUST exigir periodicidade explicitamente configurada em cada ambiente,
+  sem valor padrão, e fuso horário explicitamente identificado; MUST NOT registrar ou executar a
+  rotina quando qualquer um desses valores estiver ausente ou inválido.
+- **FR-028**: A execução MUST registrar as categorias configuradas, processadas com ranking,
+  processadas sem ranking e indisponíveis. Uma ausência de ranking informada oficialmente MUST
+  contar como processamento concluído; falha técnica, resposta parcial ou contrato inválido para
+  qualquer categoria configurada MUST tornar a execução incompleta e impedir seleção.
+- **FR-029**: O pacote final MUST identificar a categoria e a posição do produto nela e MUST NOT
+  apresentar o selecionado como mais vendido global quando a origem fornecer somente rankings por
+  categoria.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Política de Qualificação**: Regras vigentes de moeda, faixas de ticket, desconto mínimo e
-  escopo da pesquisa usadas de forma uniforme em uma execução.
+  conjunto de 1 a 10 categorias folha usadas de forma uniforme em uma execução.
 - **Execução de Pesquisa**: Uma tentativa rastreável, com política aplicada, início, término,
   status, contagens, falhas e relação com as decisões de qualificação.
 - **Oferta Avaliada**: Retrato de um produto e variação na origem, incluindo preços, desconto,
   disponibilidade, elegibilidade, popularidade, comissão, título, imagem e resultado da avaliação.
 - **Decisão de Qualificação**: Resultado aceito ou rejeitado de uma oferta, critérios observados,
   motivos e evidências que permitem revisar a decisão.
+- **Fila de Candidatos da Categoria**: Candidatos qualificados de uma categoria configurada,
+  ordenados pela posição oficial; expõe no máximo um líder corrente e permite promoção após
+  invalidação confirmada.
+- **Evidência Afiliada**: Registro obtido manualmente por ferramenta oficial, vinculado ao produto e
+  à variação, contendo elegibilidade, percentual e valor de comissão quando exibido, link de
+  compartilhamento, origem e instante da coleta; sua validade máxima é de uma hora.
 - **Produto Selecionado**: Pacote completo e revalidado do único candidato escolhido, incluindo
-  dados comerciais, link de afiliado, imagem, evidência de vendas e justificativa de seleção.
+  dados comerciais, link de afiliado, imagem, categoria, posição na categoria, evidência de vendas
+  e justificativa de seleção entre os líderes.
 
 ## Success Criteria *(mandatory)*
 
@@ -193,16 +257,17 @@ publicar em canal externo.
 - **SC-001**: Em um conjunto de validação com ao menos 50 ofertas e resultados esperados conhecidos,
   100% das ofertas são qualificadas ou rejeitadas de acordo com a política, com motivo correto para
   cada rejeição.
-- **SC-002**: Em 100% dos cenários de teste com ao menos um candidato comparável, a execução retorna
-  exatamente um dos produtos mais vendidos segundo a ordenação e os desempates definidos; quando
-  não há candidato válido, retorna nenhum.
+- **SC-002**: Em 100% dos cenários de teste com ao menos um líder de categoria qualificado, a
+  execução retorna exatamente um produto segundo desconto, comissão e identificador da categoria;
+  quando não há líder válido, retorna nenhum.
 - **SC-003**: 100% dos pacotes finais contêm todos os campos obrigatórios, representam o mesmo
   produto e variação e reproduzem os valores observados ou identificam explicitamente os valores
   derivados.
-- **SC-004**: Nenhum cenário com pesquisa incompleta, sessão inválida, link incorreto ou campo
-  obrigatório ausente resulta em produto selecionado.
-- **SC-005**: Pelo menos 95% das pesquisas com até 200 ofertas visíveis no escopo são concluídas em
-  até 10 minutos, incluindo a revalidação final.
+- **SC-004**: Nenhum cenário com pesquisa incompleta, autorização oficial inválida, evidência
+  afiliada coletada há mais de uma hora, link incorreto ou campo obrigatório ausente resulta em
+  produto selecionado.
+- **SC-005**: Pelo menos 95% das pesquisas com 1 a 10 categorias configuradas e até 200 referências
+  retornadas no total são concluídas em até 10 minutos, incluindo a revalidação final.
 - **SC-006**: Dada a mesma política e o mesmo retrato de ofertas, 100% de execuções repetidas
   escolhem o mesmo produto.
 - **SC-007**: Em uma revisão piloto de 20 execuções, o responsável consegue entender por que cada
@@ -210,26 +275,39 @@ publicar em canal externo.
   pesquisa manualmente.
 - **SC-008**: Em 100% das verificações de segurança, nenhum registro ou pacote contém credenciais,
   cookies, dados de sessão ou outros segredos do perfil.
+- **SC-009**: Em 100% dos cenários sem periodicidade ou fuso horário válidos, o scheduler encerra a
+  inicialização antes de registrar ou executar a rotina.
+- **SC-010**: Em 100% dos cenários com lista de categorias ausente, vazia, duplicada, acima de dez
+  itens ou contendo categoria que não seja uma folha MLB válida, a rotina encerra antes da pesquisa.
+- **SC-011**: Em 100% dos cenários de revalidação com líderes invalidados e substitutos conhecidos,
+  a rotina promove candidatos somente dentro da categoria correspondente, recalcula a comparação
+  entre líderes e jamais seleciona candidato não revalidado.
 
 ## Assumptions
 
 - O perfil já participa do programa de afiliados e possui acesso autorizado à Central de
   Afiliados; cadastro, recuperação de conta e adesão ao programa ficam fora do escopo.
+- O login na Central e a obtenção de elegibilidade, comissão e link são manuais; a rotina recebe
+  esses dados como evidência e não automatiza a interface autenticada.
+- Uma nova evidência afiliada precisa ser coletada ao menos uma vez por hora para continuar apta à
+  seleção.
 - O responsável fornecerá, antes da execução, os limites monetários de baixo e médio ticket e o
   desconto percentual mínimo considerado atrativo; esta feature não define esses valores de
   negócio.
 - A moeda configurada será a mesma usada pelas ofertas no escopo pesquisado.
-- Na ausência de um filtro adicional, o escopo inclui todas as ofertas acessíveis ao perfil na
-  área de pesquisa escolhida.
-- A expressão "mais vendido" se refere exclusivamente ao indicador ou ranking comparável exibido
-  pela Central de Afiliados; a rotina não estima vendas a partir de avaliações ou popularidade
-  externa.
+- O responsável configura por ambiente entre 1 e 10 categorias folha MLB; toda execução processa
+  integralmente esse conjunto, sem amostragem, paginação parcial ou truncamento por limite global
+  de ofertas.
+- A expressão "líder de categoria" se refere exclusivamente ao produto qualificado mais bem
+  posicionado no ranking oficial daquela categoria; a rotina não estima vendas a partir de
+  avaliações, não compara posições entre categorias e não alega liderança global.
 - A qualificação por faixa de preço e atratividade ocorre antes da ordenação por vendas.
 - A comissão esperada é calculada sobre o preço com desconto quando a origem fornece apenas o
   percentual, respeitando o arredondamento da moeda.
 - A imagem principal é a imagem do produto ou da variação apresentada pela origem, sem edição ou
   geração de uma nova imagem nesta feature.
-- A origem disponibiliza dados de oferta, evidência de vendas, condições de comissão e geração de
-  link de afiliado permitidos para uso pelo perfil e conforme as políticas vigentes.
-- Agendamento periódico, criação de conteúdo promocional e envio ao Telegram serão tratados em
-  features posteriores que consumirão o pacote produzido por esta rotina.
+- As interfaces oficiais disponibilizam os dados públicos de oferta e vendas, enquanto a evidência
+  manual fornece condições de comissão e link permitidos para uso pelo perfil.
+- O scheduler desta feature inicia a rotina na periodicidade configurada; criação de conteúdo
+  promocional e envio ao Telegram serão tratados em features posteriores que consumirão o pacote
+  produzido.

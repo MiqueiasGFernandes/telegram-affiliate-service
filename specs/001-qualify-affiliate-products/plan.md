@@ -8,11 +8,19 @@
 
 Construir uma aplicação standalone em NestJS e TypeScript, sem servidor HTTP, que mantém um único
 job agendado e delega toda a pesquisa, qualificação, ordenação, revalidação e seleção a uma única
-rotina de aplicação. A rotina usa somente APIs públicas documentadas do Mercado Livre para obter
-ranking, produto e preço. Como não existe contrato público para elegibilidade, comissão e geração
-de link de afiliado, esses dados entram por um arquivo de evidências preenchido pela ferramenta
-oficial da Central ou, futuramente, por uma integração formalmente autorizada. Ausência ou expiração
-da evidência impede a seleção.
+rotina de aplicação. A rotina usa somente APIs públicas documentadas do Mercado Livre para validar
+entre 1 e 10 categorias folha MLB configuradas e obter seus rankings, produtos e preços. Ranking
+oficial ausente conta como categoria processada sem candidatos; falha técnica ou resposta parcial
+torna a execução incompleta. Como não existe contrato público para elegibilidade, comissão e geração
+de link de afiliado, esses dados entram por arquivo de evidências preenchido manualmente nas
+ferramentas oficiais. Evidência ausente, incompatível ou com mais de uma hora impede a seleção.
+
+Em cada categoria, candidatos qualificados são ordenados por posição oficial e formam uma fila. O
+primeiro candidato revalidado é o líder corrente. A seleção compara somente um líder revalidado por
+categoria por desconto percentual decrescente, comissão esperada decrescente e identificador da
+categoria crescente. Se uma mudança confirmada invalidar um líder, seu próximo candidato é
+revalidado e a comparação entre líderes é refeita; falhas técnicas inconclusivas impedem qualquer
+seleção.
 
 O resultado e a auditoria podem ser persistidos em PostgreSQL. `PERSISTENCE_ENABLED=false` seleciona
 um adaptador no-op e impede que módulo, driver ou pool de banco sejam inicializados; `true` exige
@@ -43,8 +51,9 @@ isoladas, Docker Compose para dependências E2E e fixtures sanitizadas dos contr
 **Project Type**: Monólito modular standalone e agendado; não expõe portas, controllers ou
 endpoints HTTP
 
-**Performance Goals**: Concluir pelo menos 95% das execuções com até 200 ofertas em até 10 minutos;
-produzir no máximo uma seleção por ocorrência agendada
+**Performance Goals**: Concluir pelo menos 95% das execuções de 1 a 10 categorias, com até 200
+referências oficiais no total, em até 10 minutos; produzir no máximo uma seleção por ocorrência
+agendada
 
 **Constraints**: Uma rotina e um gatilho cron; sem sobreposição; sem scraping da Central; timeouts,
 retry limitado e backoff para chamadas externas; credenciais somente por secret/ENV; falhar fechado
@@ -52,8 +61,9 @@ com dados incompletos; dependências arquiteturais sempre apontam para o domíni
 dependências externas em Docker Compose; `DATABASE_URL` obrigatória somente quando a persistência
 está ligada
 
-**Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, categorias configuráveis, até
-200 ofertas por execução, uma política de qualificação ativa e zero ou um produto selecionado
+**Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, de 1 a 10 categorias folha
+configuradas, no máximo 20 referências oficiais por categoria (200 por execução), uma política de
+qualificação ativa e zero ou um produto selecionado
 
 ## Constitution Check
 
@@ -66,7 +76,7 @@ está ligada
 | Qualificação baseada em evidências | PASS | Critérios tipados, snapshot da política, motivos por oferta e rejeição fechada para dados ausentes. |
 | Conteúdo fiel e rastreável | PASS | Preços vêm da API oficial; comissão e link exigem evidência afiliada fresca e identificada. |
 | Segurança e menor privilégio | PASS | OAuth/segredos fora do repositório, configuração validada e redaction de logs. |
-| Idempotência e tolerância a falhas | PASS | Chave por ocorrência, ordenação determinística, job sem sobreposição e constraints quando o banco está ligado. |
+| Idempotência e tolerância a falhas | PASS | Chave por ocorrência; respostas oficiais sem ranking são distintas de falhas técnicas; seleção determinística e job sem sobreposição. |
 | Observabilidade sem exposição | PASS | Eventos JSON correlacionados, resumo terminal e URLs/segredos sensíveis fora dos logs. |
 | Integrações oficiais e substituíveis | PASS | APIs públicas atrás de porta; scraping proibido; evidência manual pode ser trocada por gateway autorizado. |
 | Separação das regras de negócio | PASS | Domínio e orquestrador não dependem de scheduler, HTTP, arquivo ou ORM. |
@@ -79,7 +89,9 @@ adaptador após autorização formal ou publicação de um contrato oficial pelo
 
 ### Post-Design Gate
 
-**Status: PASS**. O modelo, os contratos e o quickstart preservam todos os gates. Regras estáticas
+**Status: PASS**. O modelo, os contratos e o quickstart preservam todos os gates. Cobertura por
+categoria distingue ranking processado, ausência oficial de ranking e falha técnica; a execução só
+é selecionável quando todas as categorias configuradas foram processadas. Regras estáticas
 impedem dependências invertidas ou imports profundos entre módulos, e os E2E partem de PostgreSQL
 limpo e saudável no Compose. A persistência desligada reduz retenção histórica, mas não altera as
 regras, a saída nem os eventos da execução. Como a feature ainda não publica externamente, o modo
@@ -192,17 +204,24 @@ microserviços ou bounded contexts separados.
 
 ## Runtime Flow
 
-1. O contexto Nest valida toda a ENV antes de registrar o job ou inicializar recursos.
-2. `ScheduleModule` registra exatamente um cron com timezone explícito e proteção local contra
-   sobreposição.
+1. O processo carrega e valida ENV antes de criar recursos. Cron e timezone IANA são obrigatórios
+   sem defaults em todos os ambientes e modos.
+2. Em `scheduled`, `ScheduleModule` registra exatamente um cron validado com timezone explícito e
+   proteção local contra sobreposição. Em `once`, não registra job e executa uma ocorrência.
 3. O gatilho cria `executionKey` a partir do nome da rotina e do instante agendado em UTC.
-4. A rotina consulta os rankings oficiais configurados e enriquece os itens por operações oficiais.
-5. Ofertas são normalizadas, deduplicadas e pré-qualificadas pela política imutável da execução.
-6. A rotina associa evidência afiliada fresca pelo par produto/variação; sem ela, rejeita o item.
-7. Candidatos completos são ordenados por vendas e pelos desempates definidos na especificação.
-8. O candidato líder é revalidado; em falha, o próximo candidato é tentado sem relaxar critérios.
-9. A rotina retorna zero ou um `SelectedProduct` e grava o agregado se a persistência estiver ativa.
-10. Um resumo terminal estruturado é emitido e o lock local é liberado em bloco `finally`.
+4. A rotina consulta e valida cada uma das 1 a 10 categorias folha configuradas; “sem ranking” oficial
+   é terminal e completo para aquela categoria.
+5. As referências (até 20 por categoria) são resolvidas por tipo através de operações oficiais,
+   normalizadas, deduplicadas por produto/variação e pré-qualificadas.
+6. A rotina associa evidência afiliada manual fresca pelo par produto/variação; válida somente antes
+   do menor entre `capturedAt + 1 hora` e `validUntil`.
+7. Para cada categoria, candidatos qualificados entram em fila pela posição oficial ascendente.
+8. O líder corrente de cada categoria é revalidado; mudança confirmada promove o próximo candidato
+   daquela categoria e força nova comparação; falha técnica deixa a execução incompleta.
+9. Líderes revalidados são ordenados por desconto percentual desc., comissão esperada desc. e
+   `categoryId` asc.; posições de categorias diferentes nunca são comparadas.
+10. A rotina retorna zero ou um `SelectedProduct` e grava o agregado se a persistência estiver ativa.
+11. Um resumo terminal estruturado é emitido e o lock local é liberado em bloco `finally`.
 
 ## Persistence Toggle Design
 
@@ -243,11 +262,20 @@ microserviços ou bounded contexts separados.
 ## External Integration Decision
 
 - A aplicação não expõe API, mas consome APIs oficiais de saída do Mercado Livre.
-- Ranking de mais vendidos usa `/highlights`; metadados usam as operações atuais de itens em lote;
-  preço vigente e regular usa a operação oficial de preço.
+- Os IDs configurados são validados como categorias folha MLB antes do ranking.
+- Cada categoria usa `/highlights/MLB/category/{categoryId}` e consome todas as referências oficiais
+  devolvidas (até 20); dez categorias limitam naturalmente o escopo a 200 referências brutas.
+- Somente a resposta oficial documentada de ausência de ranking para categoria folha validada conta
+  como `PROCESSED_NO_RANKING`. Falhas técnicas, resposta parcial, erro de contrato ou falha de
+  autenticação tornam a execução `INCOMPLETE` sem seleção.
+- O ranking pode conter `ITEM`, `PRODUCT` e `USER_PRODUCT`; a infraestrutura resolve cada tipo por
+  operação oficial compatível e nunca recorre a scraping. Avaliação por produto/variação é única,
+  mas memberships e posições por categoria permanecem preservadas.
+- Metadados e preço vigente/regular vêm das operações oficiais atuais de itens/produtos e preço.
 - Comissão de vendedor nunca é tratada como comissão do afiliado.
-- Elegibilidade, percentual de afiliado, Ganhos Extras e link entram pelo contrato
-  `affiliate-evidence.schema.json`, produzido manualmente na Central ou por integração autorizada.
+- Elegibilidade, percentual e link entram pelo contrato `affiliate-evidence.schema.json`, produzido
+  manualmente por ferramentas oficiais. Validade efetiva é o menor entre validade da fonte e
+  `capturedAt + 1 hora`.
 - Playwright, Selenium, endpoints internos, interceptação de tráfego e scraping da Central são
   explicitamente excluídos deste plano.
 - Respostas `429` respeitam `Retry-After`; falhas transitórias recebem retry limitado com jitter e

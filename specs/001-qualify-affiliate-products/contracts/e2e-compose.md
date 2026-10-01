@@ -74,7 +74,9 @@ não precisa executar passos Docker manualmente no caminho normal.
 
 - `.env.e2e` real permanece ignorado pelo Git; `.env.e2e.example` pode documentar somente valores
   não sensíveis.
-- `NODE_ENV=test`, `EXECUTION_MODE=once` e `PERSISTENCE_ENABLED=true` são obrigatórios.
+- `NODE_ENV=test`, `EXECUTION_MODE=once`, `SCHEDULE_CRON`, `SCHEDULE_TIMEZONE` e
+  `PERSISTENCE_ENABLED=true` são obrigatórios. Cron e timezone são validados mesmo sem registrar job
+  no modo `once`.
 - `DATABASE_URL` é calculada após a descoberta da porta, não fixada em arquivo.
 - Client secret, refresh token, cookies e credenciais Mercado Livre reais são proibidos.
 - Os testes devem provar também o caminho `PERSISTENCE_ENABLED=false`, usando URL inalcançável e

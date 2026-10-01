@@ -11,6 +11,8 @@
     "executionKey",
     "productId",
     "variationKey",
+    "categoryId",
+    "categoryPosition",
     "title",
     "ticketBand",
     "currency",
@@ -47,6 +49,16 @@
     "variationKey": {
       "type": "string",
       "minLength": 1
+    },
+    "categoryId": {
+      "type": "string",
+      "pattern": "^MLB[0-9]+$"
+    },
+    "categoryPosition": {
+      "description": "Effective 1-based category position: API-reported position when available, otherwise stable list order.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
     },
     "title": {
       "type": "string",
@@ -116,13 +128,10 @@
       ],
       "properties": {
         "kind": {
-          "enum": [
-            "BEST_SELLER_RANK",
-            "SOLD_QUANTITY",
-            "BEST_SELLER_LIST_POSITION"
-          ]
+          "const": "BEST_SELLER_RANK"
         },
         "value": {
+          "description": "Effective 1-based position in the winning category ranking.",
           "type": "integer",
           "minimum": 1
         },

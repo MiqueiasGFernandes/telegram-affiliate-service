@@ -1,8 +1,9 @@
 # Environment Contract
 
-Toda configuração é validada antes que o scheduler registre o job. Chaves desconhecidas podem
-existir no ambiente do processo, mas somente as declaradas aqui entram na configuração tipada.
-Booleanos aceitam exclusivamente `true` ou `false`.
+Toda configuração é validada antes que qualquer recurso seja inicializado ou qualquer job seja
+registrado. `SCHEDULE_CRON` e `SCHEDULE_TIMEZONE` são obrigatórios em todos os modos, inclusive
+`once`, e não possuem defaults. Chaves desconhecidas podem existir no ambiente, mas somente as
+declaradas aqui entram na configuração tipada. Booleanos aceitam exclusivamente `true` ou `false`.
 
 ## Runtime
 
@@ -11,8 +12,8 @@ Booleanos aceitam exclusivamente `true` ou `false`.
 | `NODE_ENV` | Default `development` | `development`, `test` ou `production` |
 | `EXECUTION_MODE` | Default `scheduled` | `scheduled` mantém o processo; `once` executa uma vez e fecha o contexto |
 | `LOG_LEVEL` | Default `info` | Nível suportado pelo logger Nest |
-| `SCHEDULE_CRON` | Required in scheduled mode | Expressão cron válida; não pode produzir sobreposição deliberada |
-| `SCHEDULE_TIMEZONE` | Default `America/Sao_Paulo` | Nome IANA válido |
+| `SCHEDULE_CRON` | Required in every mode | Expressão cron válida; obrigatória mesmo em `once`, sem valor padrão |
+| `SCHEDULE_TIMEZONE` | Required in every mode | Nome IANA válido, obrigatório sem valor padrão |
 | `RUN_MAX_DURATION_MS` | Default `600000` | Inteiro entre 1.000 e 600.000 |
 
 O release inicial suporta exatamente uma réplica. `waitForCompletion` evita sobreposição dentro
@@ -44,9 +45,7 @@ Regras condicionais:
 | `MEDIUM_TICKET_MIN` | Required | Estritamente maior que `LOW_TICKET_MAX` |
 | `MEDIUM_TICKET_MAX` | Required | Maior ou igual a `MEDIUM_TICKET_MIN` |
 | `MIN_DISCOUNT_PERCENT` | Required | Decimal maior que zero e menor ou igual a 100 |
-| `MELI_CATEGORY_IDS` | Required | Lista não vazia de categorias MLB, sem duplicatas |
-| `MAX_OFFERS_PER_RUN` | Default `200` | Inteiro entre 1 e 200 |
-| `AFFILIATE_EVIDENCE_MAX_AGE_MINUTES` | Required | Inteiro positivo; limite adicional à validade declarada na evidência |
+| `MELI_CATEGORY_IDS` | Required | De 1 a 10 IDs MLB únicos; cada ID é validado oficialmente como categoria folha antes da consulta aos rankings |
 
 Decimais usam ponto no ambiente, independentemente do locale do host.
 
@@ -69,11 +68,12 @@ segredos do ambiente; não são persistidos nas tabelas de negócio.
 
 | Variable | Required/default | Validation and meaning |
 |---|---|---|
-| `AFFILIATE_EVIDENCE_MODE` | Default `manual-file` | `manual-file` ou `authorized-integration` |
+| `AFFILIATE_EVIDENCE_MODE` | Default `manual-file` | Primeiro release aceita somente `manual-file` |
 | `AFFILIATE_EVIDENCE_FILE` | Required in manual-file mode | Caminho absoluto, legível e fora do repositório |
 
-`authorized-integration` somente pode ser habilitado quando existir autorização formal e adapter
-específico aprovado. O bootstrap falha se o modo selecionado não possuir provider registrado.
+O primeiro release implementa somente `manual-file`. Uma integração automática só pode ser
+adicionada após existir autorização formal e adapter específico aprovado. O bootstrap falha se o
+modo selecionado não possuir provider registrado.
 
 ## Logging Prohibitions
 

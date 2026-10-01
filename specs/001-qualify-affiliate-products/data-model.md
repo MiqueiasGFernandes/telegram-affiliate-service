@@ -3,24 +3,21 @@
 ## Modeling Principles
 
 - O domínio é idêntico com persistência ligada ou desligada; somente a porta de armazenamento muda.
-- Valores monetários são exatos, carregam moeda e nunca usam ponto flutuante binário.
-- Todo instante persistido representa um momento absoluto em UTC; o timezone civil pertence ao job.
-- O retrato da política e das ofertas é imutável dentro de uma execução.
-- Uma execução contém muitas avaliações e no máximo um produto selecionado.
-- URLs de afiliado são dados compartilháveis, mas não aparecem integralmente em logs.
-- HTML bruto, cookies, tokens e credenciais nunca são entidades nem campos persistidos.
+- Valores monetários são decimais exatos, carregam moeda e nunca usam ponto flutuante binário.
+- Todo instante persistido representa um instante UTC; o fuso civil pertence à configuração do job.
+- Política, categorias configuradas e retratos de oferta são imutáveis dentro de uma execução.
+- Uma execução contém 1 a 10 categorias configuradas, referências de ranking, avaliações únicas e no
+  máximo um produto selecionado.
+- Uma mesma oferta pode pertencer a várias categorias: a avaliação comercial é única, as posições
+  de ranking permanecem separadas por categoria.
+- URLs afiliadas nunca aparecem completas em logs; credenciais e payloads brutos não são persistidos.
 
 ## Module Ownership
 
-`affiliate-research` é o único bounded context e proprietário deste modelo. Entidades, value
-objects e policies do domínio são TypeScript puro e não possuem decorators Nest ou TypeORM.
-`ResearchExecutionStore` é a única porta de persistência exposta ao use case; records, mappers,
-migrations e repositories PostgreSQL são detalhes internos do adapter do módulo.
-
-Um futuro módulo não pode consultar `research_execution`, `evaluated_offer` ou `selected_product`
-diretamente. Ele recebe o `SelectedProduct` pelo input/output contract público do módulo. Não há
-Shared Kernel de domínio neste release; qualquer tipo compartilhado futuro exige semântica e
-ownership explícitos.
+`affiliate-research` é o único bounded context e proprietário deste modelo. Entidades, value objects
+e policies do domínio são TypeScript puro, sem decorators Nest ou TypeORM. `ResearchExecutionStore`
+é a única porta de persistência do use case; records, mappers, migrations e repositories são
+detalhes internos do adapter PostgreSQL.
 
 ## Domain Model
 
@@ -31,15 +28,14 @@ Value object imutável criado a partir da configuração validada.
 | Field | Type | Rules |
 |---|---|---|
 | currency | ISO 4217 string | Inicialmente `BRL`; três letras maiúsculas |
-| lowTicketMin | Money | Maior ou igual a zero |
-| lowTicketMax | Money | Maior ou igual a `lowTicketMin` |
-| mediumTicketMin | Money | Maior que `lowTicketMax` |
-| mediumTicketMax | Money | Maior ou igual a `mediumTicketMin` |
+| lowTicketMin / lowTicketMax | Money | Limites inclusivos; min ≤ max |
+| mediumTicketMin / mediumTicketMax | Money | min > lowTicketMax; min ≤ max |
 | minimumDiscountPercent | Decimal percent | Maior que zero e menor ou igual a 100 |
-| categoryIds | Non-empty string set | Categorias MLB únicas e configuradas |
-| maxOffersPerRun | Integer | Entre 1 e 200 |
-| affiliateEvidenceMaxAge | Duration | Positiva e limitada pela política operacional |
-| fingerprint | SHA-256 string | Calculado da representação canônica dos campos anteriores |
+| categoryIds | Ordered unique string list | De 1 a 10 folhas MLB validadas oficialmente; ordem canônica por ID |
+| fingerprint | SHA-256 string | Hash da representação canônica de moeda, limites, desconto e categorias |
+
+Não há `maxOffersPerRun`: o máximo bruto de 200 é derivado de dez categorias com até vinte
+referências cada. Nenhuma referência oficial é descartada por corte configurável.
 
 ### ResearchExecution
 
@@ -52,208 +48,182 @@ Aggregate root de uma ocorrência lógica do scheduler.
 | runId | UUID | Correlação externa e de logs; único |
 | mode | Enum | `SCHEDULED` ou `ONCE` |
 | policy | QualificationPolicy snapshot | Obrigatória e imutável |
-| scheduledFor | Instant | Instante lógico da ocorrência |
-| startedAt | Instant | Obrigatório ao entrar em `RUNNING` |
+| scheduledFor / startedAt | Instant | Obrigatórios |
 | finishedAt | Instant/null | Obrigatório em estado terminal |
-| status | ResearchExecutionStatus | Conforme máquina de estados |
-| assessments | OfferAssessment[] | Uma por chave canônica de oferta |
+| status | ResearchExecutionStatus | `CREATED`, `RUNNING`, `COMPLETED_WITH_SELECTION`, `COMPLETED_NO_SELECTION`, `INCOMPLETE`, `FAILED`, `INTERRUPTED`, `SKIPPED_OVERLAP` |
+| categoryResults | CategoryProcessingResult[] | Um resultado por categoria configurada |
+| rankingEntries | CategoryCandidateReference[] | Proveniência de cada referência por categoria |
+| assessments | OfferAssessment[] | Uma por produto/variação única |
 | selectedProduct | SelectedProduct/null | No máximo um |
-| counts | RunCounts | Todos os valores inteiros e não negativos |
+| counts | RunCounts | Contagens não negativas de referências, avaliações e seleção |
 | failure | SanitizedFailure/null | Código estável e mensagem sem segredos |
 
-#### ResearchExecutionStatus
+Transições: `CREATED -> RUNNING`; `RUNNING ->` um estado terminal. `COMPLETED_WITH_SELECTION`
+exige exatamente um produto selecionado. `COMPLETED_NO_SELECTION` exige escopo completo e zero
+candidato válido. `INCOMPLETE`, `FAILED`, `INTERRUPTED` e `SKIPPED_OVERLAP` não podem conter seleção.
 
-```text
-CREATED -> RUNNING
-RUNNING -> COMPLETED_WITH_SELECTION
-RUNNING -> COMPLETED_NO_SELECTION
-RUNNING -> FAILED
-RUNNING -> INTERRUPTED
-CREATED -> SKIPPED_OVERLAP
-```
-
-- Estados terminais não podem regressar.
-- `COMPLETED_WITH_SELECTION` exige exatamente um `SelectedProduct`.
-- Todos os outros estados exigem ausência de `SelectedProduct`.
-- `FAILED` e `INTERRUPTED` exigem código de falha sanitizado.
-- Uma ocorrência já terminal retorna o resultado existente quando repetida com o mesmo conteúdo.
-
-### OfferAssessment
-
-Retrato normalizado e decisão de uma oferta única na execução.
+### CategoryProcessingResult
 
 | Field | Type | Rules |
 |---|---|---|
-| id | UUID | Gerado pela aplicação |
-| executionId | UUID | Referência ao aggregate root |
-| productId | String | Identificador oficial não vazio |
-| variationKey | String | Identificador oficial ou sentinela `NO_VARIATION`; nunca nulo |
+| categoryId | String | Deve pertencer ao snapshot da política |
+| status | Enum | `PROCESSED_WITH_RANKING`, `PROCESSED_NO_RANKING`, `UNAVAILABLE` |
+| referenceCount | Integer | 0–20 |
+| observedAt | Instant/null | Obrigatório quando consultada |
+| failureCode | String/null | Sanitizado; obrigatório somente em `UNAVAILABLE` |
+
+`PROCESSED_NO_RANKING` só decorre da resposta oficial específica para categoria folha validada.
+Qualquer falha técnica, resposta parcial/malformada ou contrato inesperado resulta em
+`UNAVAILABLE` e status de execução `INCOMPLETE`.
+
+### CategoryCandidateReference
+
+Representa uma posição em um ranking; não duplica a avaliação de produto.
+
+| Field | Type | Rules |
+|---|---|---|
+| categoryId | String | Categoria folha configurada |
+| effectivePosition | Positive integer | Posição usada pelo domínio: posição oficial se fornecida; senão índice estável 1–20 na lista |
+| reportedPosition | Positive integer/null | Posição explícita fornecida pela API, se houver |
+| referenceType | Enum | `ITEM`, `PRODUCT` ou `USER_PRODUCT` |
+| sourceId | String | ID oficial devolvido no ranking |
+| assessmentKey | String/null | Produto/variação normalizado; null até resolução |
+| observedAt | Instant | Instante da observação |
+
+Entradas de uma categoria são ordenadas por `effectivePosition` ascendente. Posições explícitas
+repetidas/inconsistentes, ou referências sem posição que não possam ser ordenadas pela lista,
+tornam a categoria indisponível. Uma referência não resolvível é rejeitada com motivo estável,
+sem scraping.
+
+### OfferAssessment
+
+Retrato normalizado e decisão comercial única por produto/variação.
+
+| Field | Type | Rules |
+|---|---|---|
+| productId / variationKey | String | `variationKey` usa sentinela `NO_VARIATION`; nunca nulo |
 | canonicalKey | String | `<productId>:<variationKey>`; única por execução |
-| categoryId | String | Categoria usada no ranking |
-| sourcePosition | Integer | Positiva |
+| categoryReferences | CategoryCandidateReference[] | Todas as memberships/posições observadas |
 | capturedAt | Instant | Instante do retrato inicial |
 | title | String | Trimado e não vazio |
-| condition | Enum | Deve ser `NEW` para qualificação inicial |
-| available | Boolean | Deve ser `true` para qualificação |
-| sellerReputation | String/null | Evidência oficial quando disponível |
+| condition / available | Enum/Boolean | Para qualificação inicial, condição `NEW` e disponível |
 | currency | ISO 4217 string | Igual à política |
-| originalPrice | Decimal money | Positivo |
-| discountedPrice | Decimal money | Positivo e menor que `originalPrice` |
-| discountAmount | Decimal money | `originalPrice - discountedPrice` |
-| discountPercent | Decimal percent | Cálculo exato segundo regra de arredondamento |
-| salesEvidence | SalesEvidence | Somente fonte oficial comparável |
-| imageUrl | HTTPS URL | Imagem principal do mesmo produto/variação |
-| affiliateEvidence | AffiliateEvidence/null | Obrigatória para qualificação final |
-| outcome | AssessmentOutcome | `QUALIFIED` ou `REJECTED` |
+| originalPrice / discountedPrice | Decimal money | Positivos e desconto menor que original |
+| discountAmount / discountPercent | Decimal | Calculados sem substituir valores observados |
+| salesEvidence | SalesEvidence | Ranking oficial associado à membership da categoria |
+| imageUrl | HTTPS URL | Imagem principal correspondente ao produto/variação |
+| affiliateEvidence | AffiliateEvidence/null | Obrigatória para qualificação |
+| outcome | Enum | `QUALIFIED` ou `REJECTED` |
 | reasonCodes | String set | Vazio se qualificado; não vazio se rejeitado |
-| qualificationRank | Integer/null | Preenchido somente para candidatos comparáveis |
-| revalidatedAt | Instant/null | Obrigatório para o selecionado |
+| revalidation | RevalidationSnapshot/null | Dados e instante da última validação |
 
 ### SalesEvidence
 
 | Field | Type | Rules |
 |---|---|---|
-| kind | Enum | `BEST_SELLER_RANK`, `SOLD_QUANTITY` ou `BEST_SELLER_LIST_POSITION` |
-| value | Positive integer | Quanto menor o rank, melhor; quantidade usa ordem inversa |
-| source | String | Operação oficial que forneceu a evidência |
+| kind | Enum | `BEST_SELLER_RANK` |
+| position | Positive integer | `effectivePosition`; comparável somente dentro do mesmo `categoryId` |
+| source | String | Operação oficial de ranking |
 | observedAt | Instant | Obrigatório |
 
-Valores de tipos diferentes somente podem ser comparados quando uma regra explícita da origem
-fornece equivalência. Sem equivalência, a oferta é rejeitada com `SALES_EVIDENCE_NOT_COMPARABLE`.
+Posições nunca são comparadas entre categorias. O produto é descrito como candidato qualificado
+mais bem posicionado (posição N), não como mais vendido global ou necessariamente posição 1.
 
 ### AffiliateEvidence
 
-Entrada produzida manualmente pela Central ou por integração formalmente autorizada.
-
 | Field | Type | Rules |
 |---|---|---|
-| productId | String | Deve coincidir com a oferta |
-| variationKey | String | Deve coincidir com a oferta ou `NO_VARIATION` |
+| productId / variationKey | String | Devem coincidir com a oferta |
 | eligible | Boolean | Deve ser `true` |
-| affiliateUrl | HTTPS URL | Destino resolve para o mesmo produto/variação |
+| affiliateUrl | HTTPS URL | Destino validado para o mesmo produto/variação |
 | commissionPercent | Decimal percent | Maior que zero e menor ou igual a 100 |
-| expectedCommissionAmount | Decimal money/null | Se informado, deve reconciliar com preço atual |
-| extraEarningsAmount | Decimal money/null | Opcional, separado da comissão base |
-| capturedAt | Instant | Não pode estar no futuro além da tolerância de relógio |
-| validUntil | Instant | Deve ser posterior à coleta e à revalidação |
-| source | Enum | `CENTRAL_MANUAL` ou `AUTHORIZED_INTEGRATION` |
-| sourceReference | String | Referência auditável sem credenciais |
-| fingerprint | SHA-256 string | Integridade da representação canônica |
+| expectedCommissionAmount | Decimal money/null | Quando informado, reconcilia com preço vigente |
+| capturedAt | Instant | Não pode estar no futuro |
+| validUntil | Instant/null | Limite declarado pela fonte, se houver |
+| effectiveExpiresAt | Instant | `min(validUntil, capturedAt + 1 hora)`; usa `capturedAt + 1 hora` se não houver validade declarada |
+| source | Enum | `CENTRAL_MANUAL` no primeiro release |
+| sourceReference / fingerprint | String | Referência auditável e hash canônico, sem credenciais |
 
-O valor esperado final é recalculado a partir do preço atual e do percentual. Valor informado pela
-origem pode ser mantido como evidência, mas divergência superior a um centavo rejeita a oferta.
+Elegibilidade é válida somente enquanto `now < effectiveExpiresAt`; no instante limite, está
+expirada. O domínio recebe `Clock` por porta para a validação inicial e imediatamente antes da
+finalização.
+
+### CategoryCandidateQueue and LeaderSelection
+
+Cada fila contém avaliações qualificadas da categoria ordenadas por posição oficial ascendente.
+Somente a cabeça revalidada representa o líder corrente. O vencedor provisório é o menor segundo a
+ordem: `discountPercent DESC`, `expectedCommissionAmount DESC`, `categoryId ASC`. O ID da categoria
+é desempate determinístico e não indica mérito comercial.
+
+Se uma mudança confirmada invalidar o vencedor provisório, ele é removido e o próximo candidato da
+mesma categoria é revalidado; o torneio é recalculado. Se valores de preço/desconto/comissão mudarem
+mas o candidato continuar qualificado, atualiza-se o snapshot e recalcula-se o torneio. Falha
+técnica inconclusiva interrompe com `INCOMPLETE`, sem seleção. Uma avaliação compartilhada entre
+categorias é invalidada em todas as filas em que participa.
 
 ### SelectedProduct
 
-Pacote final imutável criado somente após revalidação.
-
 | Field | Type | Rules |
 |---|---|---|
-| executionId | UUID | Um para um com `ResearchExecution` |
-| assessmentId | UUID | Deve apontar para avaliação qualificada da mesma execução |
-| productId/variationKey | String | Mesma chave da avaliação |
-| title | String | Não vazio |
-| ticketBand | Enum | `LOW` ou `MEDIUM` |
-| prices | Money fields | Original, promocional e desconto consistentes |
-| affiliateUrl | HTTPS URL | Validada para o mesmo item |
-| commission | Commission fields | Percentual, valor esperado e indicadores de derivação |
-| mainImageUrl | HTTPS URL | Mesma oferta/variação |
-| salesEvidence | SalesEvidence | Evidência que determinou a ordenação |
-| selectionRationale | String list | Critérios e desempates aplicados |
-| capturedAt | Instant | Coleta inicial |
-| validatedAt | Instant | Revalidação final e dentro da validade afiliada |
+| productId / variationKey | String | Mesma avaliação qualificada |
+| categoryId / categoryPosition | String/positive integer | Membership que venceu o torneio |
+| title / ticketBand | String/Enum | Título não vazio; `LOW` ou `MEDIUM` |
+| prices | Money fields | Original, promocional, valor e percentual de desconto coerentes |
+| affiliateUrl / commission | URL and decimals | Válidos e revalidados; indicar campos derivados |
+| mainImageUrl | HTTPS URL | Mesmo produto/variação |
+| salesEvidence | SalesEvidence | Ranking da categoria vencedora |
+| selectionRationale | String list | Inclui comparação comercial e promoções por revalidação |
+| capturedAt / validatedAt | Instant | `validatedAt` satisfaz TTL e freshness |
 
 ## Relational Model When Persistence Is Enabled
 
 ### `research_execution`
 
-| Column | PostgreSQL type | Constraints/indexes |
-|---|---|---|
-| id | uuid | PK |
-| execution_key | text | NOT NULL, UNIQUE |
-| run_id | uuid | NOT NULL, UNIQUE |
-| mode | text | NOT NULL, CHECK enum |
-| status | text | NOT NULL, CHECK enum, indexed |
-| policy_snapshot | jsonb | NOT NULL |
-| policy_fingerprint | char(64) | NOT NULL |
-| scheduled_for | timestamptz | NOT NULL, indexed |
-| started_at | timestamptz | NOT NULL |
-| finished_at | timestamptz | Nullable only while running |
-| examined_count | integer | NOT NULL, CHECK >= 0 |
-| qualified_count | integer | NOT NULL, CHECK >= 0 |
-| rejected_count | integer | NOT NULL, CHECK >= 0 |
-| selected_count | integer | NOT NULL, CHECK IN (0, 1) |
-| failure_code | text | Nullable |
-| failure_message | text | Nullable, sanitized |
+UUID PK, `execution_key` UNIQUE, `run_id` UNIQUE, modo/status com CHECK, snapshot e fingerprint de
+política, instantes `timestamptz`, contagens não negativas, `category_coverage jsonb` com IDs e
+estados por categoria, e falha sanitizada opcional.
+
+### `category_candidate_reference`
+
+UUID PK, execução FK, `category_id`, `effective_position` positiva, `reported_position` opcional,
+tipo oficial, ID da origem, chave canônica resolvida opcional e instante. UNIQUE
+`(execution_id, category_id, effective_position)` e UNIQUE
+`(execution_id, category_id, reference_type, source_id)`. Indexar execução/categoria/posição para
+reconstruir filas ordenadas.
 
 ### `evaluated_offer`
 
-| Column group | PostgreSQL type | Constraints/indexes |
-|---|---|---|
-| id | uuid | PK |
-| execution_id | uuid | NOT NULL, FK, indexed |
-| product_id | text | NOT NULL |
-| variation_key | text | NOT NULL |
-| canonical_key | text | NOT NULL |
-| category_id | text | NOT NULL |
-| source_position | integer | NOT NULL, CHECK > 0 |
-| captured_at/revalidated_at | timestamptz | Capture NOT NULL; revalidation nullable |
-| title | text | NOT NULL, CHECK trimmed length > 0 |
-| condition/availability/eligibility | typed scalar fields | NOT NULL where observed |
-| currency | char(3) | NOT NULL |
-| original_price | numeric(14,2) | NOT NULL, CHECK > 0 |
-| discounted_price | numeric(14,2) | NOT NULL, CHECK > 0 |
-| discount_amount | numeric(14,2) | NOT NULL, CHECK >= 0 |
-| discount_percent | numeric(7,4) | NOT NULL, CHECK between 0 and 100 |
-| sales_evidence | jsonb | NOT NULL |
-| commission_amount | numeric(14,2) | Nullable for rejected offers |
-| commission_percent | numeric(7,4) | Nullable for rejected offers |
-| affiliate_url | text | Nullable for rejected offers; never logged raw |
-| image_url | text | NOT NULL when qualified |
-| outcome | text | NOT NULL, CHECK enum |
-| reason_codes | jsonb | NOT NULL, JSON array |
-| qualification_rank | integer | Nullable, CHECK > 0 when present |
-| evidence_snapshot | jsonb | NOT NULL, sanitized |
-
-Unique constraint: `(execution_id, canonical_key)`.
+UUID PK, execução FK, IDs de produto/variação, chave canônica, retrato comercial, preços em
+`numeric(14,2)`, percentuais em `numeric(7,4)`, evidência afiliada e de vendas sanitizadas,
+resultado/motivos e snapshot de revalidação. UNIQUE `(execution_id, canonical_key)`.
 
 ### `selected_product`
 
-| Column | PostgreSQL type | Constraints/indexes |
-|---|---|---|
-| execution_id | uuid | PK and FK to `research_execution` |
-| evaluated_offer_id | uuid | NOT NULL, FK to `evaluated_offer`, UNIQUE |
-| final_snapshot | jsonb | NOT NULL, validates against output contract in application |
-| selected_at | timestamptz | NOT NULL |
-| selection_rationale | jsonb | NOT NULL, non-empty array |
-
-The composite relationship must guarantee that the evaluated offer belongs to the same execution;
-this can be enforced by a composite unique key and composite foreign key or inside the final
-transaction before insert.
+`execution_id` PK/FK garante no máximo uma seleção. FK para avaliação, `category_id`, posição,
+snapshot final validado contra o contrato e justificativa não vazia. A transação final garante que a
+membership selecionada pertence à execução e à avaliação.
 
 ## Persistence Transactions
 
-1. `begin(execution)` inserts or reads the row by `execution_key` in a short transaction.
-2. Network discovery and qualification occur without a database transaction.
-3. `complete(aggregate)` writes all assessments, optional selection and terminal counters in one
-   transaction using only the transaction-scoped entity manager.
-4. `fail(execution, sanitizedFailure)` records a terminal failure in a short transaction.
-5. On startup, `markInterrupted(cutoff)` transitions stale `RUNNING` rows to `INTERRUPTED`.
-6. Repeating `complete` with identical fingerprints returns the stored result; conflicting content
-   for the same execution key raises an idempotency conflict and never overwrites the audit trail.
+1. `begin(execution)` insere ou lê por `execution_key` em transação curta.
+2. Chamadas externas e avaliação ocorrem sem transação aberta.
+3. `complete(aggregate)` grava resultados de categoria, referências, avaliações, seleção opcional e
+   contagens em uma única transação usando o entity manager transacional.
+4. `fail(execution, sanitizedFailure)` registra falha em transação curta.
+5. No bootstrap, execuções `RUNNING` antigas passam a `INTERRUPTED`.
+6. Repetição idêntica retorna o resultado existente; conteúdo incompatível para a mesma chave gera
+   conflito de idempotência e não sobrescreve auditoria.
 
 ## Behavior When Persistence Is Disabled
 
-- `ResearchExecutionStore` resolves to `NoopResearchExecutionStore`.
-- No TypeORM provider, `DataSource`, pool, entity or migration code is initialized.
-- Each operation returns `persistenceStatus: DISABLED` and retains no data after the call.
-- The complete run summary and decisions remain available as sanitized structured events.
-- Domain validation, selection and output contract remain identical to the PostgreSQL path.
+- `ResearchExecutionStore` resolve para `NoopResearchExecutionStore`.
+- Nenhum provider TypeORM, `DataSource`, pool, entidade ou migration é inicializado.
+- Cada operação retorna `persistenceStatus: DISABLED` e não retém dados após a execução.
+- O resumo estruturado mantém contagens e cobertura de categorias sem expor segredos.
+- Regras de domínio e contrato final são idênticos ao caminho PostgreSQL.
 
 ## Retention and Sensitive Data
 
-Retention duration is an operational policy to be defined before production and is not hard-coded
-in this feature. Cleanup must delete child rows transactionally before or with the owning execution.
-OAuth tokens, cookies, passwords, raw headers, browser state and unredacted external payloads are
-never persisted. Affiliate URLs may be stored because they are intended for sharing, but loggers
-must emit only product identity and a URL fingerprint.
+Retenção histórica é política operacional a definir antes de produção. Tokens OAuth, cookies, senhas,
+headers crus, estado de navegador e payloads não sanitizados nunca são persistidos. URLs afiliadas
+podem ser armazenadas como link de compartilhamento, mas logs usam apenas identidade e fingerprint.

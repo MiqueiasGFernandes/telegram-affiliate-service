@@ -7,7 +7,7 @@ existir durante a fase de implementação; este documento não contém código d
 
 - Node.js 24 LTS e npm compatível.
 - Credenciais OAuth de uma aplicação Mercado Livre autorizada para as operações públicas usadas.
-- Categorias MLB válidas para a pesquisa.
+- De 1 a 10 IDs únicos de categorias folha MLB para configurar em `MELI_CATEGORY_IDS`.
 - Arquivo de evidência afiliada preenchido pela Central oficial e válido conforme
   [affiliate-evidence.schema.json](./contracts/affiliate-evidence.schema.json).
 - Docker Engine e Docker Compose v2 para os E2E; PostgreSQL local não é necessário.
@@ -47,9 +47,10 @@ npm run contract:validate -- \
   /run/secrets/affiliate-evidence.json
 ```
 
-Expected outcome: o validador aceita somente entradas completas, HTTPS, vigentes e com fingerprint
-válido. A validação semântica da rotina ainda confirma produto/variação, intervalo percentual,
-datas e reconciliação monetária.
+Expected outcome: JSON Schema valida estrutura, formatos e campos obrigatórios. A rotina também
+valida fingerprint, vínculo produto/variação, datas, expiração efetiva no menor entre `validUntil`
+e `capturedAt + 1 hora`, intervalo percentual e reconciliação monetária. No instante de uma hora a
+evidência já está expirada.
 
 ## Run Once Without Persistence
 
@@ -59,6 +60,8 @@ sem valores comerciais ou segredos reais:
 ```dotenv
 NODE_ENV=development
 EXECUTION_MODE=once
+SCHEDULE_CRON=<valid-cron-expression>
+SCHEDULE_TIMEZONE=<valid-IANA-timezone>
 PERSISTENCE_ENABLED=false
 AFFILIATE_CURRENCY=BRL
 LOW_TICKET_MIN=<decimal>
@@ -66,7 +69,7 @@ LOW_TICKET_MAX=<decimal>
 MEDIUM_TICKET_MIN=<decimal>
 MEDIUM_TICKET_MAX=<decimal>
 MIN_DISCOUNT_PERCENT=<decimal>
-MELI_CATEGORY_IDS=<comma-separated-category-ids>
+MELI_CATEGORY_IDS=<1-to-10-comma-separated-MLB-leaf-category-ids>
 MELI_CLIENT_ID=<secret>
 MELI_CLIENT_SECRET=<secret>
 MELI_REFRESH_TOKEN=<secret>
@@ -85,7 +88,14 @@ Expected outcome:
 
 - o contexto Nest inicia sem porta HTTP;
 - nenhum driver, pool ou tentativa de conexão PostgreSQL é criado;
-- exatamente uma execução pesquisa, qualifica, ordena e revalida;
+- a inicialização valida cron e timezone obrigatórios mesmo no modo `once`;
+- antes do ranking, cada categoria configurada é validada oficialmente como folha MLB;
+- exatamente uma execução processa todas as referências devolvidas por todas as categorias,
+  qualifica, ordena e revalida;
+- cada ranking contém até 20 referências; 10 categorias produzem até 200 sem truncamento;
+- resposta oficial `NO_RANKING` conta como categoria processada sem candidatos;
+- falha técnica, resposta parcial ou contrato inválido em qualquer categoria deixa a execução
+  `INCOMPLETE` e sem produto selecionado;
 - o evento final valida contra [run-summary.schema.json](./contracts/run-summary.schema.json);
 - `persistence` é `DISABLED`;
 - se houver seleção, o pacote valida contra
@@ -174,7 +184,7 @@ Configure:
 ```dotenv
 EXECUTION_MODE=scheduled
 SCHEDULE_CRON=<valid-cron-expression>
-SCHEDULE_TIMEZONE=America/Sao_Paulo
+SCHEDULE_TIMEZONE=<valid-IANA-timezone>
 ```
 
 Run:
@@ -205,31 +215,43 @@ npm run migration:test
 
 Required scenarios:
 
-1. **Qualification fixture**: ao menos 50 ofertas conhecidas produzem decisões e motivos esperados.
-2. **Ranking and ties**: rank, desconto, comissão e ordem de origem resolvem empates na ordem
-   especificada.
-3. **Missing affiliate evidence**: produto sem evidência ou com evidência expirada é rejeitado e
-   nunca gera pacote parcial.
-4. **Price drift**: mudança entre coleta e revalidação rejeita o líder e tenta o próximo candidato.
-5. **Bad link**: link cujo destino não corresponde ao produto/variação é rejeitado.
-6. **Partial external response**: lote/página incompleto encerra sem seleção.
-7. **Persistence off**: contexto inicia com banco indisponível e nenhuma inicialização de
+1. **Category configuration**: lista ausente, vazia, duplicada, com 11 IDs, categoria inexistente,
+   pai ou de outro site é rejeitada antes de consultar rankings; 1 e 10 folhas MLB válidas passam.
+2. **Category completeness**: todas as referências de todas as categorias são consumidas;
+   10 categorias com 20 cada processam 200, sem truncamento.
+3. **Category outcomes**: resposta oficial sem ranking resulta em `PROCESSED_NO_RANKING`; timeout,
+   resposta parcial ou contrato malformado resulta em `INCOMPLETE`, sem seleção.
+4. **Duplicate membership**: o mesmo produto/variação em duas categorias gera uma avaliação e
+   preserva duas posições de ranking.
+5. **Leader tournament**: apenas o candidato qualificado mais bem posicionado de cada categoria
+   participa; posições de categorias diferentes nunca são comparadas; desconto, comissão e
+   `categoryId` resolvem a comparação entre líderes.
+6. **Leader promotion**: mudança confirmada invalida o líder, promove candidato da mesma categoria
+   e recalcula a comparação. Falha técnica de revalidação produz `INCOMPLETE`.
+7. **Evidence freshness**: `59:59.999` é válido, `60:00.000` expira; `validUntil` posterior não
+   estende uma hora; evidência que vence durante execução é reprovada antes da seleção.
+8. **Missing affiliate evidence**: produto sem evidência é rejeitado e nunca gera pacote parcial.
+9. **Bad link**: link cujo destino não corresponde ao produto/variação é rejeitado.
+10. **Persistence off**: contexto inicia com banco indisponível e nenhuma inicialização de
    `DataSource` ocorre.
-8. **Persistence on**: Compose entrega PostgreSQL vazio e saudável; migrations, constraints,
+11. **Persistence on**: Compose entrega PostgreSQL vazio e saudável; migrations, constraints,
    transação final, rollback e reconciliação de execução interrompida são exercitados no banco real.
-9. **Idempotency**: duas conclusões concorrentes da mesma ocorrência deixam uma execução, uma
+12. **Idempotency**: duas conclusões concorrentes da mesma ocorrência deixam uma execução, uma
    avaliação por produto/variação e no máximo uma seleção.
-10. **Scheduler overlap**: uma Promise pendente prova que o segundo tick local não executa a rotina.
-11. **Security**: logs e linhas persistidas não contêm client secret, refresh token, headers,
-    cookies ou URL sensível não redigida.
-12. **Performance**: pelo menos 95% das execuções de referência com 200 ofertas terminam em até 10
-    minutos.
+13. **Scheduler configuration**: cron/timezone ausentes ou inválidos bloqueiam qualquer modo antes
+   do registro do job ou execução da rotina; sobreposição local é descartada.
+14. **Security**: logs e linhas persistidas não contêm client secret, refresh token, headers,
+   cookies ou URL sensível não redigida.
+15. **Performance**: pelo menos 95% das execuções de referência com até 10 categorias e 200
+   referências terminam em até 10
+   minutos.
 
 ## Optional Live Smoke Test
 
 O smoke test live é opt-in, nunca roda no CI e usa somente operações públicas descritas em
-[mercado-livre-gateway.md](./contracts/mercado-livre-gateway.md). Ele deve limitar a uma categoria e
-poucos itens, registrar apenas metadados sanitizados e respeitar rate limits. Nenhum teste live abre
+[mercado-livre-gateway.md](./contracts/mercado-livre-gateway.md). Ele pode usar uma categoria e
+poucos campos para validar o contrato, registrar apenas metadados sanitizados e respeitar rate limits.
+Nenhum teste live abre
 ou automatiza a Central de Afiliados.
 
 ## Acceptance Evidence

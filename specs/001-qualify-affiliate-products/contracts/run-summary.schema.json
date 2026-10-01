@@ -17,6 +17,7 @@
     "finishedAt",
     "durationMs",
     "counts",
+    "categoryCoverage",
     "persistence"
   ],
   "properties": {
@@ -44,6 +45,7 @@
       "enum": [
         "COMPLETED_WITH_SELECTION",
         "COMPLETED_NO_SELECTION",
+        "INCOMPLETE",
         "FAILED",
         "INTERRUPTED",
         "SKIPPED_OVERLAP"
@@ -91,6 +93,57 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1
+        }
+      }
+    },
+    "categoryCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configured",
+        "processedWithRanking",
+        "processedWithoutRanking",
+        "unavailable",
+        "categories"
+      ],
+      "properties": {
+        "configured": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "processedWithRanking": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "processedWithoutRanking": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "unavailable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["categoryId", "status", "referenceCount"],
+            "properties": {
+              "categoryId": {"type": "string", "pattern": "^MLB[0-9]+$"},
+              "status": {
+                "enum": ["PROCESSED_WITH_RANKING", "PROCESSED_NO_RANKING", "UNAVAILABLE"]
+              },
+              "referenceCount": {"type": "integer", "minimum": 0, "maximum": 20},
+              "failureCode": {"type": "string", "minLength": 1}
+            }
+          }
         }
       }
     },

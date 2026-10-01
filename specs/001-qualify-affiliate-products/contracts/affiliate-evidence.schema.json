@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://telegram-affiliate-service.local/contracts/affiliate-evidence.schema.json",
   "title": "Affiliate Evidence File",
-  "description": "Fresh eligibility, commission and share-link evidence produced by the official Central or an authorized integration.",
+  "description": "Eligibility, commission and share-link evidence collected manually through official Mercado Livre affiliate tools. Semantic validation limits freshness to one hour after capturedAt.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -46,7 +46,6 @@
         "commissionPercent",
         "currency",
         "capturedAt",
-        "validUntil",
         "source",
         "sourceReference",
         "fingerprint"
@@ -87,13 +86,11 @@
         },
         "validUntil": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Optional source expiry; it can shorten, never extend, the one-hour maximum from capturedAt."
         },
         "source": {
-          "enum": [
-            "CENTRAL_MANUAL",
-            "AUTHORIZED_INTEGRATION"
-          ]
+          "const": "CENTRAL_MANUAL"
         },
         "sourceReference": {
           "type": "string",
