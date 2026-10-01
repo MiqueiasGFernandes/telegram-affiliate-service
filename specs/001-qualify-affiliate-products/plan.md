@@ -32,6 +32,9 @@ O projeto é um monólito modular com um bounded context inicial, `affiliate-res
 aplicação usam TypeScript puro e dependem de portas pequenas; NestJS, scheduler, APIs externas,
 arquivo e ORM permanecem em adapters de infraestrutura. Os E2E executam o runner no host/CI e
 sobem todas as dependências externas, inicialmente PostgreSQL, por `compose.e2e.yaml` dedicado.
+Como trabalho documental complementar desta etapa, o README será ampliado para apresentar o
+produto, esclarecer limites de escopo e guiar a execução local e a implantação genérica em
+produção, sempre conforme comandos e restrições confirmados no repositório.
 
 ## Technical Context
 
@@ -68,6 +71,12 @@ configuradas, no máximo 20 referências oficiais por categoria (200 por execuç
 qualificação ativa, zero ou um produto selecionado, retenção PostgreSQL por 90 dias após o término
 da execução e exatamente uma réplica ativa por ambiente
 
+**Documentation Scope**: README.md em português do Brasil; conteúdo operacional baseado em
+`.env.example`, `package.json`, scripts, configuração e contratos versionados. Não há plataforma
+de deploy, imagem de aplicação, licença ou infraestrutura de produção declarada pelo repositório;
+instruções de produção devem ser uma sequência genérica de implantação de processo Node.js e não
+um comando específico de provedor.
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
@@ -84,6 +93,7 @@ da execução e exatamente uma réplica ativa por ambiente
 | Integrações oficiais e substituíveis | PASS | APIs públicas atrás de porta; scraping proibido; evidência manual pode ser trocada por gateway autorizado. |
 | Separação das regras de negócio | PASS | Domínio e orquestrador não dependem de scheduler, HTTP, arquivo ou ORM. |
 | Testes e portas de qualidade | PASS | Testes unitários, arquitetura, contrato, integração, configuração, migrations e E2E com dependências reais em Compose. |
+| Documentação operacional verdadeira | PASS | O README distinguirá capacidades presentes, limites, execuções local/produção, armazenamento opcional e ausência de publicação Telegram; instruções serão rastreadas a arquivos e scripts existentes. |
 
 **Research constraint**: a automação desassistida da Central não passa pelo gate de conformidade,
 pois não há API pública documentada e os termos oficiais proíbem scraping. A entrega inicial usa
@@ -101,7 +111,9 @@ os dados associados ao atingir 90 dias: purge síncrono no startup antes de qual
 manutenção horária UTC enquanto residente. Sem persistência, nenhum histórico é retido.
 Falhas/incompletudes geram somente logs estruturados sanitizados, sem canal externo de alerta. A
 operação continua responsável por manter exatamente uma réplica e monitorar disponibilidade do
-processo.
+processo. O README ampliado não introduz promessas de publicação, deploy automatizado ou execução
+em múltiplas réplicas; segredos continuam excluídos e cada comando documentado deverá existir no
+manifesto ou script correspondente.
 
 ## Project Structure
 
@@ -127,6 +139,8 @@ specs/001-qualify-affiliate-products/
 ### Source Code (repository root)
 
 ```text
+README.md
+.env.example
 compose.e2e.yaml
 .dependency-cruiser.cjs
 scripts/
@@ -182,6 +196,42 @@ feature. O job é somente um driving adapter; `RunAffiliateResearch` é o único
 sequencialmente descoberta, normalização, pré-qualificação, associação da evidência, ordenação,
 revalidação, seleção, persistência opcional e observabilidade. Pastas internas não são jobs,
 microserviços ou bounded contexts separados.
+
+## README Documentation Design
+
+O README atual já contém uma descrição curta, arquitetura, configuração básica, execução e testes,
+mas não oferece onboarding completo nem uma sequência de implantação de produção. A mudança
+planejada reorganiza e amplia o documento sem mudar código, contratos de runtime ou comportamento.
+
+Estrutura proposta, em português do Brasil e com sumário navegável:
+
+1. Visão geral do produto e do problema que resolve.
+2. Funcionalidades implementadas e limites explícitos: seleção de zero ou um produto; evidência
+   afiliada manual; nenhum scraping/login automático, geração promocional ou publicação no Telegram.
+3. Fluxo da rotina e arquitetura do monólito modular, DDD e SOLID, incluindo persistência opcional.
+4. Stack, requisitos e visão curta da estrutura do repositório.
+5. Execução local passo a passo: Node/npm, `npm ci`, cópia/preenchimento de `.env`, carregar os
+   valores no ambiente da shell (a aplicação não lê `.env` automaticamente), evidência manual no
+   formato contratado, `config:check`, `start:once` e `start:scheduler`.
+6. Modos com e sem PostgreSQL, comandos verificados de migration e aviso de que `compose.e2e.yaml`
+   é isolado para E2E, não uma composição de desenvolvimento ou produção.
+7. Implantação genérica em produção: Node.js 24+, provisionamento externo opcional de PostgreSQL,
+   gestão de segredos e arquivo de evidência, saída compilada, migrations como etapa anterior ao
+   start executadas em um ambiente de release com `tsx`, `npm start`, exatamente uma réplica,
+   reinício/supervisão e sinais de shutdown.
+8. Testes e qualidade com comandos do `package.json`, expectativa de Docker para E2E e links à
+   especificação, quickstart, contratos de ambiente e Compose.
+
+Não adicionar badge, licença, provedor, Dockerfile, workflow de release, cron de plataforma ou
+comando de deploy não suportados pelo repositório. A seção de produção deve nomear as decisões que
+cabem ao operador (host/container e supervisor), e não apresentar exemplos de plataforma como
+configuração oficial do projeto. Referências detalhadas de variáveis e validação ficam nos
+documentos existentes em `specs/001-qualify-affiliate-products/`.
+
+**Model / contracts impact**: nenhum agregado, tabela, variável, interface ou contrato externo é
+introduzido por documentação; `data-model.md` e `contracts/` continuam descrevendo o produto e os
+contratos atuais. `quickstart.md` complementa este plano com critérios verificáveis dos passos
+documentados.
 
 ## Modular Monolith, DDD and SOLID Boundaries
 

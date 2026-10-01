@@ -282,3 +282,67 @@ Ao concluir a validação, preserve:
 - prova de que nenhum listener HTTP foi aberto;
 - prova de que o modo `PERSISTENCE_ENABLED=false` não inicializou PostgreSQL;
 - identificação do project name E2E e prova de teardown sem container, network ou volume órfão.
+
+## README Documentation Validation
+
+Use this section to verify the local and production procedures documented in the repository root
+README. Detailed environment semantics remain in [environment.md](./contracts/environment.md),
+manual evidence format in [affiliate-evidence.schema.json](./contracts/affiliate-evidence.schema.json),
+and Docker test behavior in [e2e-compose.md](./contracts/e2e-compose.md).
+
+### Local onboarding path
+
+The README must present a complete, copyable sequence:
+
+1. Install Node.js 24+ and npm, clone the repository, and run `npm ci`.
+2. Copy `.env.example` to `.env`; replace every illustrative credential/value and configure the
+   affiliate evidence file at an absolute path outside the repository. The application does not
+   load `.env` itself: export the concrete values into the current shell/IDE before running any
+   command (for Bash/Zsh, a fully populated shell-compatible `.env` may be exported with
+   `set -a; source .env; set +a`).
+3. Obtain affiliate eligibility, commission and sharing-link evidence manually using official
+   Mercado Livre tools; never automate login or scrape the affiliate center.
+4. Run `npm run config:check`, then `npm run start:once` to execute a single research routine.
+5. Explain `npm run start:scheduler` for resident scheduling and identify the mandatory cron and
+   IANA timezone settings.
+6. Describe PostgreSQL as optional locally; when enabled, provision a separate database, set the
+   toggle/connection settings, then run `npm run migration:run` and
+   `npm run migration:status` before execution.
+
+Expected result: the standalone process opens no HTTP listener, selects at most one product,
+prints sanitized structured events, and does not persist history when the toggle is disabled.
+
+### Production deployment path
+
+The README must give an ordered, platform-neutral release checklist rather than claim a supported
+hosting platform:
+
+1. Provision a Node.js 24+ Linux process environment with outbound access to official Mercado Livre
+   APIs and durable, restricted access to the manual evidence file.
+2. Supply validated production policy, category IDs, schedule/timezone and OAuth credentials through
+   the platform's secret/configuration facility; do not commit `.env` or secrets.
+3. Decide explicitly whether PostgreSQL is enabled. If enabled, provision the production database,
+   configure TLS as required, and run versioned migrations as a separate deployment/release step
+   from an environment that has `tsx` available (it is currently a development dependency).
+4. Install/build using repository scripts (`npm ci`, `npm run build`), verify migration status, and
+   start the compiled process with `NODE_ENV=production`, `EXECUTION_MODE=scheduled` and the
+   required runtime ENV.
+5. Run exactly one active replica, configure process supervision/restart and graceful SIGTERM, and
+   monitor structured sanitized logs. Do not recover missed scheduled occurrences.
+6. State clearly that the repository has no application Dockerfile, production Compose/Helm
+   manifest, deployment provider configuration or automated release workflow; the operator must
+   supply those deployment-specific pieces.
+
+Expected result: one long-lived scheduler instance executes only future occurrences; PostgreSQL
+retention and startup purge apply only when persistence is enabled. Do not use the E2E Compose
+project as production infrastructure.
+
+### README acceptance checks
+
+- Product scope and feature exclusions match FR-024/FR-025: no Telegram publishing, promotional
+  copy/image generation, automated affiliate-center login or scraping is presented as implemented.
+- Each command and path resolves to `package.json`, a repository script or an existing document.
+- The README does not claim a license, hosting platform, application container image or CI deploy
+  workflow that the repository does not define.
+- Secret examples remain placeholders; explain 90-day retention and the single-replica constraint.
+- All internal links resolve, commands are grouped by local run, migrations, quality checks and E2E.

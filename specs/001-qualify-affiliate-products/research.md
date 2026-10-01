@@ -459,3 +459,35 @@ autorização formal do Mercado Livre.
 
 Uma integração automática futura de elegibilidade/comissão/link exige contrato oficial ou
 autorização formal; não é requisito para o primeiro release com evidência manual.
+
+## README as Product and Operations Guide
+
+**Decision**: expand the root `README.md` in Brazilian Portuguese using the repository as the source
+of truth. Separate current product capabilities from explicit exclusions, then provide a local
+walkthrough and a platform-neutral production checklist. Link to the detailed environment,
+affiliate-evidence, E2E Compose, and feature quickstart contracts instead of copying them in full.
+
+**Rationale**: the current README has a correct but abbreviated overview and run commands; the
+project already has executable scripts and more detailed operational constraints in
+`package.json`, `.env.example`, configuration validation, migration scripts, and feature docs. A
+single checked walkthrough should reduce onboarding guesswork while retaining detail in the
+specialized docs.
+
+**Alternatives considered**: writing platform-specific deployment instructions was rejected
+because there is no Dockerfile, production Compose/Helm/Render manifest, release workflow, or chosen
+hosting provider. Adding an API/Telegram publishing section as if implemented was rejected because
+the current feature ends after selection. Duplicating the complete environment table and every
+contract in README was rejected because those details already have canonical documents.
+
+**Repository evidence**: `package.json` defines install/build/run/test/migration scripts;
+`.env.example` supplies non-secret configuration placeholders but is not loaded by the application
+(`PlatformConfigModule` parses `process.env` directly and no dotenv loading is registered), so local
+steps must explicitly export/source concrete values or inject them through a shell/IDE. Migration
+scripts invoke `tsx`, currently a devDependency, so migration execution belongs in a release/build
+environment that has that package or in a separately provisioned migration image. `src/main.ts` runs a standalone
+Nest application context without HTTP; `src/platform/config/environment-config.ts` validates
+required schedule, qualification, OAuth, and persistence settings; `scripts/run-migrations.ts`
+provides `migration:run` and `migration:status`; `scripts/run-e2e.mjs` owns an isolated Compose
+lifecycle; `.github/workflows/ci.yml` proves the CI checks; no application Dockerfile, production
+manifest, CONTRIBUTING file, or LICENSE was found. The README must say production migration is a
+separate release/deployment step and that exactly one active replica is supported.

@@ -4,7 +4,7 @@
 
 **Organization**: tarefas agrupadas pelas três histórias da especificação. Testes estão incluídos porque os critérios de aceite e a constituição exigem validação unitária, de contratos e E2E controlada.
 
-**Progress preservation**: tarefas já concluídas mantêm o estado marcado; os IDs da fase final foram renumerados para manter a sequência de execução. T053–T059 e T064–T067 são o trabalho ainda pendente de retenção e benchmark.
+**Progress preservation**: T001–T067 permanecem concluídas. Esta atualização acrescenta somente T068–T071 para detalhar e validar o README; o trabalho documental não altera funcionalidades do produto.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -145,6 +145,15 @@
 - [X] T066 Atualizar o quickstart para documentar retenção horária, precedência do purge inicial e benchmark; trocar o comando inexistente `migration:test` pelos scripts existentes `migration:run`/`migration:status` e incluir o novo `test:performance` em `specs/001-qualify-affiliate-products/quickstart.md`
 - [X] T067 Executar typecheck, arquitetura, testes unitários/contrato/integração, E2E Compose e benchmark; validar FR-030–FR-033, SC-005, redaction e evidências de aceitação em `specs/001-qualify-affiliate-products/quickstart.md`
 
+### README onboarding and production documentation
+
+**Purpose**: explicar o produto e fornecer instruções verificadas para execução local e implantação genérica em produção, sem atribuir funcionalidades ou plataforma não existentes.
+
+- [X] T068 Revisar a visão geral, arquitetura e escopo do produto em `README.md`, distinguindo seleção implementada das exclusões de login/scraping afiliado, geração promocional e publicação Telegram conforme `specs/001-qualify-affiliate-products/plan.md` e `specs/001-qualify-affiliate-products/spec.md`
+- [X] T069 Documentar onboarding local copiável em `README.md`: Node.js 24+, `npm ci`, cópia e preenchimento de `.env.example`, export explícito das variáveis (o app não carrega `.env`), evidência manual, `config:check`, modos `start:once`/`start:scheduler` e configuração PostgreSQL/migrations conforme `specs/001-qualify-affiliate-products/quickstart.md`
+- [X] T070 Documentar checklist genérico de produção em `README.md`: configuração/secrets e evidência manual fora do Git, build compilado, migrations em etapa release com `tsx`, `npm start`, retenção/toggle PostgreSQL, exatamente uma réplica, supervisão/SIGTERM e ausência de Dockerfile/manifesto/provedor de deploy no repositório
+- [X] T071 Validar no `README.md` todos os comandos, caminhos e links relativos contra `package.json`, `.env.example`, `specs/001-qualify-affiliate-products/contracts/`, `specs/001-qualify-affiliate-products/quickstart.md` e scripts; confirmar que exemplos não contêm credenciais reais nem alegam licença, deploy automatizado ou postagem Telegram
+
 ---
 
 ## Dependencies & Execution Order
@@ -157,6 +166,7 @@
 - US2 (Phase 4) depende de US1 porque seleciona e revalida os candidatos qualificados.
 - US3 (Phase 5) depende de US2 para compor/persistir o produto final; seu resumo também reporta cobertura produzida por US1. T053–T059 completam retenção e recuperação antes do aceite operacional desta história.
 - Polish (Phase 6) depende das histórias desejadas, com validação completa após US3. T064–T065 podem ser desenvolvidas em paralelo com retenção; documentação e validação final dependem de ambas.
+- README onboarding (T068–T071) é trabalho documental transversal, independente de mudança runtime, mas suas tarefas são sequenciais porque atualizam/validam o mesmo `README.md`.
 
 ### User Story Dependencies
 
@@ -174,6 +184,7 @@ US2 e US3 têm dependência funcional real da saída anterior; portanto não sã
 - US2: T030–T032 são testes independentes; T033–T035 são separáveis por domínio e adapter depois de US1.
 - US3: T038–T042 são verificações independentes; T053 e T054 podem ser escritas em paralelo; T055 e T056 alteram arquivos distintos e podem avançar em paralelo. T057 depende de T055–T056; T058 depende de T055 e T057; T059 integra purge e jobs ao bootstrap após T057–T058.
 - Polish: T064 e T065 alteram arquivos distintos e podem ser trabalhadas em paralelo; T066 depende do script de benchmark, e T067 depende de todas as tarefas pendentes.
+- README: não há oportunidade segura de paralelismo entre T068–T071 porque todas alteram ou validam o mesmo arquivo e cada etapa depende das afirmações consolidadas na anterior.
 
 ### Parallel Example: User Story 1
 
@@ -201,3 +212,4 @@ T055 contrato/no-op de purge | T056 migration/index de retenção
 3. Adicionar US2 para seleção e promoção de líderes com revalidação controlada.
 4. Adicionar US3 para pacote final, scheduler e toggle de persistência; completar T053–T059 para garantir retenção de 90 dias, purge inicial fail-closed e manutenção horária.
 5. Executar benchmark determinístico e Polish; validar caminho sem banco e E2E Compose com PostgreSQL. Geração de texto/imagem promocional e publicação no Telegram permanecem fora desta feature.
+6. Concluir T068–T071 como follow-up documental: revisar escopo e arquitetura, publicar instruções locais e checklist de produção, depois validar comandos, links e segurança do README.
