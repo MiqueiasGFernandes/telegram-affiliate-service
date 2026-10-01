@@ -1,0 +1,8 @@
+{
+  "content": [
+    { "id": "MLB100000001", "type": "ITEM", "position": 1 },
+    { "id": "MLB100000002", "type": "ITEM" },
+    { "id": "MLB100000003", "type": "PRODUCT", "position": 3 },
+    { "id": "MLBU100000004", "type": "USER_PRODUCT", "position": 4 }
+  ]
+}

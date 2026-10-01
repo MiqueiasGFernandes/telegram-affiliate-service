@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-01T10:00:30Z",
+  "entries": [
+    {
+      "productId": "MLB100000001",
+      "variationKey": "NO_VARIATION",
+      "eligible": true,
+      "affiliateUrl": "https://meli.la/example",
+      "commissionPercent": "10",
+      "currency": "BRL",
+      "capturedAt": "2026-10-01T10:00:00Z",
+      "source": "CENTRAL_MANUAL",
+      "sourceReference": "fixture-manual-evidence",
+      "fingerprint": "ac298fc052862e6ed2f642ee8ecf0854231c2d7dc4258862142b1f2513de93a3"
+    }
+  ]
+}

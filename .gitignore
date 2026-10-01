@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+!.env.e2e.example
+/affiliate-evidence.json
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

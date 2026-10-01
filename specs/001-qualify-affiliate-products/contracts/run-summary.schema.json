@@ -17,6 +17,7 @@
     "finishedAt",
     "durationMs",
     "counts",
+    "rejections",
     "categoryCoverage",
     "persistence"
   ],
@@ -93,6 +94,20 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 1
+        }
+      }
+    },
+    "rejections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reasonCode"],
+        "properties": {
+          "reasonCode": { "type": "string", "minLength": 1 },
+          "canonicalKey": { "type": "string", "minLength": 1 },
+          "referenceType": { "enum": ["ITEM", "PRODUCT", "USER_PRODUCT"] },
+          "sourceId": { "type": "string", "minLength": 1 }
         }
       }
     },

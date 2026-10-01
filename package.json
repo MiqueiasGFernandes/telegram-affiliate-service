@@ -1,0 +1,55 @@
+{
+  "name": "telegram-affiliate-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:once": "EXECUTION_MODE=once node --import tsx src/main.ts",
+    "start:scheduler": "EXECUTION_MODE=scheduled node --import tsx src/main.ts",
+    "config:check": "node --import tsx src/platform/config/check.ts",
+    "contract:validate": "node --import tsx scripts/validate-contract.ts",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:contract": "vitest run test/contract",
+    "test:integration": "vitest run test/integration",
+    "test:architecture": "depcruise --config .dependency-cruiser.cjs 'src/**/*.ts'",
+    "migration:run": "node --import tsx scripts/run-migrations.ts",
+    "migration:status": "node --import tsx scripts/run-migrations.ts status",
+    "test:e2e": "node scripts/run-e2e.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.0.0",
+    "@nestjs/config": "^12.0.0",
+    "@nestjs/core": "^12.0.0",
+    "@nestjs/schedule": "^12.0.0",
+    "@nestjs/typeorm": "^12.0.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "cron": "^4.4.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "typeorm": "^0.3.28",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@types/node": "^24.0.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "dependency-cruiser": "^16.10.4",
+    "eslint": "^9.39.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  }
+}
