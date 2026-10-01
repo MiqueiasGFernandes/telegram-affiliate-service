@@ -125,4 +125,14 @@ export class PostgresResearchExecutionStore implements ResearchExecutionStorePor
        failure_code = 'PROCESS_RESTARTED' WHERE status = 'RUNNING'`,
     );
   }
+
+  async purgeExpired(cutoff: Date): Promise<number> {
+    return this.dataSource.transaction(async (manager) => {
+      const result = (await manager.query(
+        `DELETE FROM research_execution WHERE status <> 'RUNNING' AND finished_at <= $1`,
+        [cutoff],
+      )) as [unknown[], number];
+      return result[1];
+    });
+  }
 }

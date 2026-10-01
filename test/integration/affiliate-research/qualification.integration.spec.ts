@@ -57,6 +57,7 @@ describe('affiliate research qualification flow', () => {
       },
       fail: async () => undefined,
       markInterrupted: async () => undefined,
+      purgeExpired: async () => 0,
     };
     const clock: ClockPort = { now: () => now };
     const logger: LoggerPort = { info: () => undefined, error: () => undefined };

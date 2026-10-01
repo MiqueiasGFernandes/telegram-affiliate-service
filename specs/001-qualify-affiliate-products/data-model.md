@@ -16,8 +16,8 @@
 
 `affiliate-research` é o único bounded context e proprietário deste modelo. Entidades, value objects
 e policies do domínio são TypeScript puro, sem decorators Nest ou TypeORM. `ResearchExecutionStore`
-é a única porta de persistência do use case; records, mappers, migrations e repositories são
-detalhes internos do adapter PostgreSQL.
+é a única porta de persistência usada pelo caso de uso e pela manutenção técnica; records, mappers,
+migrations e repositories são detalhes internos do adapter PostgreSQL.
 
 ## Domain Model
 
@@ -181,11 +181,13 @@ categorias é invalidada em todas as filas em que participa.
 
 UUID PK, `execution_key` UNIQUE, `run_id` UNIQUE, modo/status com CHECK, snapshot e fingerprint de
 política, instantes `timestamptz`, contagens não negativas, `category_coverage jsonb` com IDs e
-estados por categoria, e falha sanitizada opcional.
+estados por categoria, e falha sanitizada opcional. `finished_at` é obrigatório para estados
+terminais e indexado para a rotina de retenção; nunca se usa `started_at` para expirar execuções
+`RUNNING`.
 
 ### `category_candidate_reference`
 
-UUID PK, execução FK, `category_id`, `effective_position` positiva, `reported_position` opcional,
+UUID PK, execução FK `ON DELETE CASCADE`, `category_id`, `effective_position` positiva, `reported_position` opcional,
 tipo oficial, ID da origem, chave canônica resolvida opcional e instante. UNIQUE
 `(execution_id, category_id, effective_position)` e UNIQUE
 `(execution_id, category_id, reference_type, source_id)`. Indexar execução/categoria/posição para
@@ -193,13 +195,14 @@ reconstruir filas ordenadas.
 
 ### `evaluated_offer`
 
-UUID PK, execução FK, IDs de produto/variação, chave canônica, retrato comercial, preços em
+UUID PK, execução FK `ON DELETE CASCADE`, IDs de produto/variação, chave canônica, retrato comercial, preços em
 `numeric(14,2)`, percentuais em `numeric(7,4)`, evidência afiliada e de vendas sanitizadas,
 resultado/motivos e snapshot de revalidação. UNIQUE `(execution_id, canonical_key)`.
 
 ### `selected_product`
 
-`execution_id` PK/FK garante no máximo uma seleção. FK para avaliação, `category_id`, posição,
+`execution_id` PK/FK `ON DELETE CASCADE` garante no máximo uma seleção. FK para avaliação,
+`category_id`, posição,
 snapshot final validado contra o contrato e justificativa não vazia. A transação final garante que a
 membership selecionada pertence à execução e à avaliação.
 
@@ -213,6 +216,10 @@ membership selecionada pertence à execução e à avaliação.
 5. No bootstrap, execuções `RUNNING` antigas passam a `INTERRUPTED`.
 6. Repetição idêntica retorna o resultado existente; conteúdo incompatível para a mesma chave gera
    conflito de idempotência e não sobrescreve auditoria.
+7. Ao tornar uma execução terminal, preencher `finished_at`; reconciliar RUNNING para INTERRUPTED
+   também define esse timestamp.
+8. `purgeExpired(cutoff)` seleciona e remove em uma única transação somente execuções terminais com
+   `finished_at <= cutoff`; a exclusão do agregado raiz aciona as FKs em cascata.
 
 ## Behavior When Persistence Is Disabled
 
@@ -224,6 +231,15 @@ membership selecionada pertence à execução e à avaliação.
 
 ## Retention and Sensitive Data
 
-Retenção histórica é política operacional a definir antes de produção. Tokens OAuth, cookies, senhas,
-headers crus, estado de navegador e payloads não sanitizados nunca são persistidos. URLs afiliadas
-podem ser armazenadas como link de compartilhamento, mas logs usam apenas identidade e fingerprint.
+Quando a persistência estiver ativa, reter a execução e todo o agregado por 90 dias contados de
+`finished_at`. Um adapter de manutenção apaga em uma única transação execuções terminais cujo
+`finished_at <= cutoff`, sendo `cutoff` o instante de início da limpeza menos 90 dias; FKs em cascata
+apagam referências, avaliações, links de afiliado e seleção sem deixar fragmentos. Um índice em
+`finished_at` suporta a seleção dos expirados. No startup, primeiro reconcilia execuções RUNNING
+abandonadas como INTERRUPTED e então aguarda o purge inicial antes de habilitar pesquisa em qualquer
+modo. Falha no purge inicial aborta o bootstrap; falhas nas tentativas horárias em UTC são
+estruturadas em log e repetidas na próxima hora. Uma indisponibilidade posterga o purge até o
+startup, que ocorre antes de nova pesquisa. Execuções RUNNING não expiram. Com persistência
+desligada não há retenção. Tokens OAuth, cookies, senhas, headers crus, estado de navegador e
+payloads não sanitizados nunca são persistidos. URLs afiliadas podem ser armazenadas como link de
+compartilhamento, mas logs usam apenas identidade e fingerprint.

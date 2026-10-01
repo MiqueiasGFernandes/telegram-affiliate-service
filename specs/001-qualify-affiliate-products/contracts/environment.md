@@ -16,8 +16,14 @@ declaradas aqui entram na configuração tipada. Booleanos aceitam exclusivament
 | `SCHEDULE_TIMEZONE` | Required in every mode | Nome IANA válido, obrigatório sem valor padrão |
 | `RUN_MAX_DURATION_MS` | Default `600000` | Inteiro entre 1.000 e 600.000 |
 
-O release inicial suporta exatamente uma réplica. `waitForCompletion` evita sobreposição dentro
-dessa réplica; não é uma garantia distribuída.
+O release inicial suporta exatamente uma réplica por ambiente; mais réplicas são não suportadas e
+podem iniciar execuções duplicadas. O mutex local evita sobreposição somente dentro do processo.
+Não há backlog: ocorrências perdidas durante indisponibilidade não são recuperadas; o scheduler
+aguarda o próximo horário futuro. O cron de pesquisa não executa no startup. Com persistência
+habilitada, o purge de retenção deve concluir no startup antes de ativar qualquer modo de execução;
+purge inicial malsucedido impede o início do serviço. Enquanto residente, a manutenção repete pelo
+menos a cada hora em UTC; falhas são logadas e tentadas na próxima hora. Falhas e incompletudes
+emitem somente logs estruturados sanitizados, sem transporte externo de alertas.
 
 ## Persistence Toggle
 
@@ -80,3 +86,8 @@ modo selecionado não possuir provider registrado.
 Nenhuma variável marcada como segredo, header de autorização, refresh token, payload OAuth ou URL
 com parâmetros potencialmente sensíveis pode ser registrada. O link afiliado é substituído por
 produto, variação, host e fingerprint em eventos estruturados.
+
+Eventos operacionais de início, conclusão, falha/incompletude e falha de manutenção incluem IDs de
+correlação, status, duração, contagens e código de erro estável. Mensagens cruas de exceções externas,
+credenciais e URLs afiliadas não são permitidas. Exportação de métricas, supervisão do processo e
+alertas derivados de logs pertencem à plataforma de implantação e não são integrados pelo serviço.

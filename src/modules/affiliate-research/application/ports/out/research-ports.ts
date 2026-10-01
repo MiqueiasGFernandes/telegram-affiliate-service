@@ -49,6 +49,7 @@ export interface ResearchExecutionStorePort {
   complete(summary: RunSummaryRecord): Promise<void>;
   fail(executionKey: string, failureCode: string): Promise<void>;
   markInterrupted(): Promise<void>;
+  purgeExpired(cutoff: Date): Promise<number>;
 }
 
 export interface RunSummaryRecord {

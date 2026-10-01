@@ -1,6 +1,6 @@
 # Phase 0 Research: Pesquisa e Seleção de Produtos Afiliados
 
-**Date**: 2026-09-30
+**Date**: 2026-10-01
 
 **Status**: Phase 0 concluída. As decisões abaixo foram verificadas em documentação oficial ou
 primária e as clarificações da especificação estão resolvidas.
@@ -41,30 +41,33 @@ permanece Current nesta data e não é apropriado para produção. Node 20 já e
 
 **Decision**: validar `SCHEDULE_CRON` e `SCHEDULE_TIMEZONE` antes de criar o application context;
 ambos são obrigatórios em todo ambiente e não possuem default, inclusive no modo `once`. Depois, iniciar com
-`NestFactory.createApplicationContext(AppModule)`, nunca chamar `listen()`, registrar
-`ScheduleModule.forRoot()` uma única vez e manter somente um job que aguarda a Promise do
-orquestrador. O cron terá nome estável, timezone IANA explícito e `waitForCompletion: true`. O
-processo habilitará shutdown hooks e fechará contexto, scheduler e pool em `SIGTERM`/`SIGINT`.
+`NestFactory.createApplicationContext(AppModule)`, nunca chamar `listen()`, e controlar `CronJob`
+diretamente pelo adapter `cron` já usado pelo job residente. A ativação dos jobs ocorre somente
+depois do purge inicial de retenção; modo `once` também aguarda esse purge. O cron de pesquisa usa
+timezone IANA explícito, não executa no startup e possui mutex local; um segundo cron técnico roda
+a manutenção horária em UTC. O processo habilitará shutdown hooks e fechará contexto, jobs e pool
+em `SIGTERM`/`SIGINT`.
 
 **Rationale**: application context é a forma oficial de executar Nest sem listeners de rede.
 Validar antes do bootstrap impede registro ou execução acidental com periodicidade implícita;
-timezone inválido também deve falhar fechado. `waitForCompletion` descarta ticks locais enquanto a
-execução anterior ainda está ativa. Um job fino mantém todas as funcionalidades na mesma rotina,
-como requerido.
+timezone inválido também deve falhar fechado. O mutex descarta ticks locais enquanto a execução
+anterior ainda está ativa. A manutenção técnica não adiciona etapa ao fluxo de negócio; pesquisa,
+qualificação e seleção continuam sendo uma única rotina.
 
-**Alternatives considered**: um cron externo com processo run-to-completion reduziria o tempo
-residente, mas contraria a decisão de manter o scheduler na aplicação. Vários jobs foram rejeitados
-por fragmentarem o fluxo e criarem estados parciais.
+**Alternatives considered**: cron externo reduziria o tempo residente, mas exigiria outro mecanismo
+operacional e não resolveria o purge antes do modo `once`; usar Nest `ScheduleModule` também seria
+possível, mas a implementação atual possui adapter fino baseado em `cron`. Um job técnico horário de
+retenção é aceito porque não separa o caso de uso de pesquisa.
 
 **Sources**: [Standalone applications](https://docs.nestjs.com/standalone-applications),
-[Task scheduling](https://docs.nestjs.com/application/task-scheduling),
-[Lifecycle events](https://docs.nestjs.com/fundamentals/lifecycle-events).
+[`cron` README](https://github.com/kelektiv/node-cron/blob/main/README.md),
+[Nest lifecycle events](https://docs.nestjs.com/fundamentals/lifecycle-events).
 
 ## Concorrência e idempotência
 
-**Decision**: implantar uma única réplica. Combinar `waitForCompletion` com um mutex do caso de uso
-e uma `executionKey` estável no formato `affiliate-research:<scheduled-for-UTC>`. Quando o banco
-estiver ligado, constraints únicas protegem contra repetição da mesma ocorrência e da mesma oferta.
+**Decision**: implantar uma única réplica. Combinar mutex em processo com uma `executionKey` estável
+no formato `affiliate-research:<scheduled-for-UTC>`. Quando o banco estiver ligado, constraints
+únicas protegem contra repetição da mesma ocorrência e da mesma oferta.
 
 **Rationale**: a proteção do cron é local ao processo e não coordena réplicas. Como PostgreSQL é
 opcional, ele não pode ser pré-requisito para o lock em todos os modos. Singleton é a garantia
@@ -76,6 +79,67 @@ não oferecem lease/fencing e desaparecem quando a persistência está desligada
 
 **Sources**: [Nest reliability locks](https://docs.nestjs.com/reliability/locks),
 [PostgreSQL explicit/advisory locks](https://www.postgresql.org/docs/18/explicit-locking.html).
+
+## Retenção de auditoria
+
+**Decision**: definir retenção de 90 dias após o término da execução. `finished_at` é preenchido em
+todo estado terminal e indexado. Um adapter PostgreSQL apaga em uma transação execuções terminais
+com `finished_at <= cutoff`, onde `cutoff` é calculado uma vez como início da limpeza menos 90 dias;
+relações usam `ON DELETE CASCADE` para remover auditoria, evidências e links afiliados em conjunto.
+Reconcilia `RUNNING` abandonadas para `INTERRUPTED`, aguarda purge no startup e só então permite
+pesquisa ou registra scheduler. Um CronJob UTC `0 * * * *` repete o purge pelo menos de hora em hora
+no modo residente, sem sobrepor tentativas. Não expirar registros ainda `RUNNING`; a reconciliação
+atribui `finished_at` atual. Sem persistência não existe histórico. Downtime posterga a limpeza até
+o startup, antes de qualquer nova pesquisa.
+
+**Rationale**: centralizar a expiração na raiz do agregado evita resíduos órfãos e particionamento
+prematuro para o volume esperado. A limpeza horária limita a retenção excedente enquanto residente;
+a limpeza síncrona no startup trata registros vencidos durante downtime. Se o purge inicial falhar,
+bootstrap deve abortar para não pesquisar antes da limpeza exigida. Falhas horárias são logadas e
+tentadas novamente na próxima hora.
+
+**Alternatives considered**: excluir tabelas independentes foi rejeitado por risco de auditoria
+parcial; particionamento fica adiado até volume demonstrar necessidade. Excluir somente durante
+pesquisas foi rejeitado por deixar dados retidos além do limite quando a periodicidade de pesquisa é
+baixa ou a aplicação não roda no modo residente.
+
+**Sources**: [PostgreSQL partitioning and bulk-delete trade-offs](https://www.postgresql.org/docs/current/ddl-partitioning.html),
+[TypeORM transactions](https://typeorm.io/docs/transactions/).
+
+## Recuperação e monitoramento operacional
+
+**Decision**: manter um job de negócio residente para a pesquisa e um CronJob de manutenção horária
+UTC; configurar o job de pesquisa com `runOnInit=false`, timezone IANA explícito e proteção contra
+sobreposição em processo. A inicialização aguarda o purge antes de registrar ambos os crons. O cron
+de pesquisa não mantém backlog:
+após downtime, esperar a próxima ocorrência futura. Ticks enquanto a rotina está ativa são
+descartados, nunca enfileirados. A plataforma deve implantar uma réplica exata; nenhuma garantia
+distribuída é oferecida. Falha/incompletude e falha de purge geram apenas logs JSON sanitizados, sem
+Telegram, email ou outro canal de alerta operacional.
+
+**Rationale**: o comportamento evita publicação retroativa e mantém a rotina única. Scheduler local
+não coordena réplicas; essa restrição precisa ser imposta no deploy. A decisão de logs-only é
+compatível com o escopo, deixando supervisão e alertas derivados à plataforma.
+
+**Sources**: [Nest task scheduling](https://docs.nestjs.com/application/task-scheduling),
+[`cron` README](https://github.com/kelektiv/node-cron/blob/main/README.md).
+
+## Benchmark de desempenho
+
+**Decision**: adicionar benchmark determinístico do caso de uso com 100 execuções por perfil de
+sucesso, 10 categorias × 20 referências, final revalidation, seed e latências simuladas fixas. Fakes
+substituem gateways, armazenamento e relógio; nunca há chamadas live. Registrar p50/p95/máximo,
+workload, seed, tempos simulados e ambiente. O perfil de sucesso simula 50 ms por validação/ranking
+de categoria, 100 ms por resolução de item/produto, 50 ms por checagem de imagem e 100 ms na
+revalidação final, sob o limite configurado de concorrência; retries não entram nesse perfil e têm
+um cenário separado. Aprovação: pelo menos 95/100 em até 600.000 ms. Perfis de borda e falha são
+reportados separadamente.
+
+**Rationale**: mensura a rotina sob carga reproduzível e mantém o CI independente de rede/rate limit.
+O valor é uma meta do pipeline de teste, não uma estimativa da latência real do Meli.
+
+**Alternatives considered**: smoke test live não é reproduzível e fixtures sem latência ignorariam
+parte do custo de integração.
 
 ## Configuração e toggle de persistência
 

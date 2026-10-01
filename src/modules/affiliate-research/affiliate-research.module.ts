@@ -15,6 +15,7 @@ import { NoopResearchExecutionStore } from './infrastructure/persistence/noop/no
 import { SystemClock } from '../../platform/observability/system-clock.js';
 import { StructuredLogger } from '../../platform/observability/structured-logger.js';
 import { AffiliateResearchJob } from './infrastructure/scheduler/affiliate-research.job.js';
+import { RetentionMaintenanceJob } from './infrastructure/scheduler/retention-maintenance.job.js';
 
 const providers = [
   {
@@ -56,6 +57,7 @@ const providers = [
       await dataSource.initialize();
       const store = new PostgresResearchExecutionStore(dataSource);
       await store.markInterrupted();
+      await store.purgeExpired(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
       return store;
     },
   },
@@ -66,6 +68,14 @@ const providers = [
       config: ConstructorParameters<typeof AffiliateResearchJob>[0],
       research: ConstructorParameters<typeof AffiliateResearchJob>[1],
     ) => new AffiliateResearchJob(config, research),
+  },
+  {
+    provide: RetentionMaintenanceJob,
+    inject: [APP_CONFIG, RESEARCH_EXECUTION_STORE],
+    useFactory: (
+      config: ConstructorParameters<typeof RetentionMaintenanceJob>[0],
+      store: ConstructorParameters<typeof RetentionMaintenanceJob>[1],
+    ) => new RetentionMaintenanceJob(config, store),
   },
   { provide: CLOCK, useClass: SystemClock },
   { provide: APP_LOGGER, useClass: StructuredLogger },

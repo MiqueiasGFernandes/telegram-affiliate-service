@@ -1,14 +1,15 @@
 # Implementation Plan: Pesquisa e Seleção de Produtos Afiliados
 
-**Branch**: `001-qualify-affiliate-products` | **Date**: 2026-09-30 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-qualify-affiliate-products` | **Date**: 2026-10-01 | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `/specs/001-qualify-affiliate-products/spec.md`
 
 ## Summary
 
 Construir uma aplicação standalone em NestJS e TypeScript, sem servidor HTTP, que mantém um único
-job agendado e delega toda a pesquisa, qualificação, ordenação, revalidação e seleção a uma única
-rotina de aplicação. A rotina usa somente APIs públicas documentadas do Mercado Livre para validar
+job de negócio agendado e uma manutenção técnica de retenção. Toda pesquisa, qualificação,
+ordenação, revalidação e seleção fica em uma única rotina de aplicação. A rotina usa somente APIs
+públicas documentadas do Mercado Livre para validar
 entre 1 e 10 categorias folha MLB configuradas e obter seus rankings, produtos e preços. Ranking
 oficial ausente conta como categoria processada sem candidatos; falha técnica ou resposta parcial
 torna a execução incompleta. Como não existe contrato público para elegibilidade, comissão e geração
@@ -36,8 +37,8 @@ sobem todas as dependências externas, inicialmente PostgreSQL, por `compose.e2e
 
 **Language/Version**: TypeScript 6.x em Node.js 24 LTS, módulos ESM
 
-**Primary Dependencies**: NestJS 12.x (`@nestjs/core`, `@nestjs/config`, `@nestjs/schedule`,
-`@nestjs/typeorm`), TypeORM, `pg`, Zod, dependency-cruiser e cliente HTTP nativo do Node.js; nenhum
+**Primary Dependencies**: NestJS 12.x (`@nestjs/core`, `@nestjs/config`), `cron`, TypeORM direto
+(DataSource condicional), `pg`, Zod, dependency-cruiser e cliente HTTP nativo do Node.js; nenhum
 framework HTTP de entrada e nenhuma automação de navegador
 
 **Storage**: PostgreSQL 18 quando `PERSISTENCE_ENABLED=true`; adaptador no-op sem conexão ou retenção
@@ -52,8 +53,9 @@ isoladas, Docker Compose para dependências E2E e fixtures sanitizadas dos contr
 endpoints HTTP
 
 **Performance Goals**: Concluir pelo menos 95% das execuções de 1 a 10 categorias, com até 200
-referências oficiais no total, em até 10 minutos; produzir no máximo uma seleção por ocorrência
-agendada
+referências oficiais no total, em até 10 minutos, medido em benchmark reproduzível com fixtures,
+latências externas simuladas e 100 execuções por perfil; produzir no máximo uma seleção por
+ocorrência agendada
 
 **Constraints**: Uma rotina e um gatilho cron; sem sobreposição; sem scraping da Central; timeouts,
 retry limitado e backoff para chamadas externas; credenciais somente por secret/ENV; falhar fechado
@@ -63,7 +65,8 @@ está ligada
 
 **Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, de 1 a 10 categorias folha
 configuradas, no máximo 20 referências oficiais por categoria (200 por execução), uma política de
-qualificação ativa e zero ou um produto selecionado
+qualificação ativa, zero ou um produto selecionado, retenção PostgreSQL por 90 dias após o término
+da execução e exatamente uma réplica ativa por ambiente
 
 ## Constitution Check
 
@@ -93,10 +96,12 @@ adaptador após autorização formal ou publicação de um contrato oficial pelo
 categoria distingue ranking processado, ausência oficial de ranking e falha técnica; a execução só
 é selecionável quando todas as categorias configuradas foram processadas. Regras estáticas
 impedem dependências invertidas ou imports profundos entre módulos, e os E2E partem de PostgreSQL
-limpo e saudável no Compose. A persistência desligada reduz retenção histórica, mas não altera as
-regras, a saída nem os eventos da execução. Como a feature ainda não publica externamente, o modo
-no-op é permitido; qualquer feature futura de publicação deverá reavaliar se a persistência durável
-passa a ser obrigatória para deduplicação.
+limpo e saudável no Compose. Com persistência ativa, manutenção remove execuções terminais e todos
+os dados associados ao atingir 90 dias: purge síncrono no startup antes de qualquer pesquisa e
+manutenção horária UTC enquanto residente. Sem persistência, nenhum histórico é retido.
+Falhas/incompletudes geram somente logs estruturados sanitizados, sem canal externo de alerta. A
+operação continua responsável por manter exatamente uma réplica e monitorar disponibilidade do
+processo.
 
 ## Project Structure
 
@@ -155,7 +160,8 @@ src/
 │           │       ├── mappers/
 │           │       └── repositories/
 │           └── scheduler/
-│               └── affiliate-research.job.ts
+│               ├── affiliate-research.job.ts
+│               └── retention-maintenance.job.ts
 └── platform/
     ├── config/
     ├── database/
@@ -179,8 +185,10 @@ microserviços ou bounded contexts separados.
 
 ## Modular Monolith, DDD and SOLID Boundaries
 
-- `AppModule` é o composition root e registra configuração, scheduler uma única vez, infraestrutura
-  técnica e `AffiliateResearchModule`. O grafo de módulos deve permanecer acíclico; `forwardRef()`
+- `AppModule` é o composition root e registra configuração, o job `cron` e infraestrutura técnica
+  condicional em conjunto com `AffiliateResearchModule`. Um coordenador de inicialização aguarda o
+  purge antes de ativar os CronJobs; não depende da ordem de hooks entre providers diferentes. O
+  grafo de módulos deve permanecer acíclico; `forwardRef()`
   não é aceito para contornar ciclo arquitetural.
 - `AffiliateResearchModule` encapsula todos os providers e exporta somente o input port da rotina e
   o contrato de resultado. Futuros módulos acessam essa API pública, nunca entidades, repositories,
@@ -206,8 +214,13 @@ microserviços ou bounded contexts separados.
 
 1. O processo carrega e valida ENV antes de criar recursos. Cron e timezone IANA são obrigatórios
    sem defaults em todos os ambientes e modos.
-2. Em `scheduled`, `ScheduleModule` registra exatamente um cron validado com timezone explícito e
-   proteção local contra sobreposição. Em `once`, não registra job e executa uma ocorrência.
+2. Se persistência estiver ligada, um purge de terminais vencidos é aguardado no bootstrap depois da
+   reconciliação de execuções abandonadas. Falha nesse purge bloqueia o bootstrap e qualquer
+   pesquisa. Só depois a aplicação ativa o cron de pesquisa (`runOnInit=false`) e um cron horário de
+   manutenção UTC, ambos com prevenção local de sobreposição. Em `once`, o purge inicial também
+   ocorre antes da execução única, sem registrar crons. Ticks de pesquisa concorrentes são
+   descartados; ocorrências perdidas durante indisponibilidade não são enfileiradas, e o processo
+   aguarda o próximo horário futuro.
 3. O gatilho cria `executionKey` a partir do nome da rotina e do instante agendado em UTC.
 4. A rotina consulta e valida cada uma das 1 a 10 categorias folha configuradas; “sem ranking” oficial
    é terminal e completo para aquela categoria.
@@ -221,23 +234,63 @@ microserviços ou bounded contexts separados.
 9. Líderes revalidados são ordenados por desconto percentual desc., comissão esperada desc. e
    `categoryId` asc.; posições de categorias diferentes nunca são comparadas.
 10. A rotina retorna zero ou um `SelectedProduct` e grava o agregado se a persistência estiver ativa.
-11. Um resumo terminal estruturado é emitido e o lock local é liberado em bloco `finally`.
+11. Um resumo terminal estruturado é emitido e o lock local é liberado em bloco `finally`. Logs de
+    falha/incompletude não disparam notificações externas.
 
 ## Persistence Toggle Design
 
 - `PERSISTENCE_ENABLED` aceita exclusivamente `true` ou `false` e assume `false` quando ausente.
 - O módulo PostgreSQL é registrado condicionalmente. No modo desligado, `TypeOrmModule`,
   `DataSource` e pool não existem no grafo de dependências.
-- Uma única porta `ResearchExecutionStore` é injetada na rotina. O adaptador PostgreSQL implementa
-  `begin`, `complete`, `fail` e `markInterrupted`; o adaptador no-op retorna explicitamente
-  `persistence-disabled` e não retém dados.
+- Uma única porta `ResearchExecutionStore` representa persistência e retenção. O adaptador PostgreSQL
+  implementa `begin`, `complete`, `fail`, `markInterrupted` e `purgeExpired(cutoff)`; o adaptador
+  no-op retorna explicitamente `persistence-disabled` e não retém dados.
 - `PERSISTENCE_ENABLED=true` sem `DATABASE_URL`, schema válido ou migrations aplicadas falha antes
   do scheduler iniciar. Não existe fallback silencioso para no-op.
 - Chamadas remotas não mantêm transação aberta. A execução é iniciada em transação curta e o
   resultado completo é persistido atomicamente em outra; execuções `RUNNING` antigas são
   reconciliadas para `INTERRUPTED` no próximo bootstrap.
+- Um adapter de retenção reconcilia `RUNNING` abandonadas para `INTERRUPTED`, depois executa e
+  aguarda o purge inicial antes de permitir modo `once` ou registrar qualquer cron. O purge remove
+  em uma transação apenas execuções terminais com `finished_at <= cutoff` (`cutoff` é o instante da
+  chamada menos 90 dias); cascades removem referências, avaliações, links afiliados e seleção.
+  Qualquer falha no purge inicial aborta o bootstrap. Enquanto residente, um cron UTC `0 * * * *`
+  tenta a manutenção pelo menos a cada hora, sem se sobrepor; falhas horárias geram log estruturado e
+  serão tentadas novamente na próxima hora, sem interromper pesquisa ativa. Uma indisponibilidade
+  posterga o purge, que volta a ser obrigatório no próximo startup antes de pesquisar.
 - `synchronize` e migrations automáticas permanecem desligados. Migrations versionadas são etapa
   operacional separada.
+
+## Retention and Scheduler Operations
+
+- `research_execution.finished_at` indexado é o relógio de retenção; toda transição para estado
+  terminal define esse timestamp, inclusive `FAILED`, `INCOMPLETE` e `INTERRUPTED`. Registros sem
+  término e linhas `RUNNING` permanecem protegidos.
+- `ON DELETE CASCADE` no agregado de execução mantém a remoção de auditoria, evidências e link
+  afiliado atômica. A manutenção usa o mesmo `EntityManager` transacional e remove somente linhas
+  terminais cujo `finished_at` cruzou o corte. Particionamento fica fora do escopo pelo volume
+  projetado.
+- A garantia de instância única é de implantação, não de coordenação distribuída no código. Mais
+  de uma réplica pode produzir execuções duplicadas; isso não é suportado neste release.
+- A aplicação emite eventos JSON para início, conclusão, falha/incompletude e falha de manutenção,
+  com run/execution ID, status, duração, contagens e códigos estáveis. Nunca registra URL afiliada,
+  credenciais nem mensagens cruas de exceção. Não implementa Telegram/email/integração de alerta
+  operacional; supervisão de processo e alertas derivados dos logs pertencem à plataforma.
+
+## Deterministic Performance Benchmark
+
+- Benchmark isolado do `RunAffiliateResearchUseCase`, usando fixtures e fakes para gateways,
+  resolução de produto, verificação de imagem, armazenamento e relógio. Não chama Meli nem a Central.
+- Perfil de carga de sucesso cobre 10 categorias × 20 referências, revalidação do líder final,
+  semente fixa e latências simuladas determinísticas por operação (50 ms para validação/ranking de
+  categoria, 100 ms por resolução de item/produto, 50 ms para checagem de imagem e 100 ms para
+  revalidação final), com concorrência limitada pelo mesmo `MELI_MAX_CONCURRENCY` configurado; perfil
+  de borda cobre uma categoria e perfil de falha valida encerramento seguro sem compor a amostra de
+  duração. O perfil bem-sucedido não injeta retries; um cenário de retry determinístico é separado.
+- Executar 100 vezes cada perfil de sucesso e registrar p50, p95, máximo, workload, semente,
+  latências e ambiente/runtime. Aceitar se ao menos 95/100 terminarem em até 600.000 ms e cada
+  resultado tiver uma única seleção quando a fixture assim exigir. O resultado mede o pipeline
+  sintético, não latência nem SLA de produção do Mercado Livre.
 
 ## E2E Infrastructure Design
 

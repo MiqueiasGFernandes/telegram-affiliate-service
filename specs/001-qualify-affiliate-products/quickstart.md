@@ -195,11 +195,21 @@ npm run start:scheduler
 
 Expected outcome:
 
-- um único job nomeado é registrado;
+- após o purge inicial de retenção terminar, um cron de pesquisa é registrado; com persistência
+  ativa, também é registrado o cron técnico horário de manutenção;
 - o processo permanece aberto sem escutar HTTP;
 - cada tick chama a mesma rotina completa;
 - um tick ocorrido enquanto a rotina anterior está ativa é registrado como descartado/ignorado e
   não inicia uma segunda execução;
+- `runOnInit=false`; ticks perdidos durante indisponibilidade não são recuperados e o processo
+  aguarda a próxima ocorrência futura;
+- no modo `once`, a limpeza inicial também termina antes da pesquisa. Se o purge inicial falhar, o
+  bootstrap falha sem registrar cron nem pesquisar;
+- purge de retenção roda pelo menos de hora em hora em UTC; falha horária gera log sanitizado e nova
+  tentativa na próxima hora;
+- executar exatamente uma réplica por ambiente (não há lock distribuído);
+- falhas/incompletudes são reportadas somente por logs JSON sanitizados; o serviço não envia alertas
+  externos;
 - `SIGTERM` encerra scheduler, chamadas em andamento e pool de forma ordenada.
 
 Execute este release com exatamente uma réplica.
@@ -210,7 +220,9 @@ Execute este release com exatamente uma réplica.
 npm run test:contract
 npm run test:integration
 npm run test:e2e
-npm run migration:test
+npm run migration:run
+npm run migration:status
+npm run test:performance
 ```
 
 Required scenarios:
@@ -236,15 +248,20 @@ Required scenarios:
    `DataSource` ocorre.
 11. **Persistence on**: Compose entrega PostgreSQL vazio e saudável; migrations, constraints,
    transação final, rollback e reconciliação de execução interrompida são exercitados no banco real.
-12. **Idempotency**: duas conclusões concorrentes da mesma ocorrência deixam uma execução, uma
+12. **Retention**: purge remove execução terminal exatamente no corte e além dele, em cascata com
+   referências, avaliações, links e seleção; preserva execução não vencida e `RUNNING`; é idempotente.
+   Provar purge concluído antes do cron e antes do modo `once`, falha do purge inicial bloqueando a
+   pesquisa, e falha de ciclo horário registrada para nova tentativa.
+13. **Idempotency**: duas conclusões concorrentes da mesma ocorrência deixam uma execução, uma
    avaliação por produto/variação e no máximo uma seleção.
-13. **Scheduler configuration**: cron/timezone ausentes ou inválidos bloqueiam qualquer modo antes
+14. **Scheduler configuration**: cron/timezone ausentes ou inválidos bloqueiam qualquer modo antes
    do registro do job ou execução da rotina; sobreposição local é descartada.
-14. **Security**: logs e linhas persistidas não contêm client secret, refresh token, headers,
+15. **Security**: logs e linhas persistidas não contêm client secret, refresh token, headers,
    cookies ou URL sensível não redigida.
-15. **Performance**: pelo menos 95% das execuções de referência com até 10 categorias e 200
-   referências terminam em até 10
-   minutos.
+16. **Performance**: o benchmark determinístico executa 100 amostras de sucesso para 10 categorias
+   e 200 referências com latências simuladas fixas; ao menos 95 amostras terminam em até 600.000 ms.
+   Também registra p50, p95, máximo, semente, perfil de latência e ambiente. Testes de borda/falha
+   ficam fora da amostra de sucesso; não há chamadas live ao Meli.
 
 ## Optional Live Smoke Test
 

@@ -8,4 +8,7 @@ export class NoopResearchExecutionStore implements ResearchExecutionStorePort {
   async complete(_summary: RunSummaryRecord): Promise<void> {}
   async fail(_executionKey: string, _failureCode: string): Promise<void> {}
   async markInterrupted(): Promise<void> {}
+  async purgeExpired(_cutoff: Date): Promise<number> {
+    return 0;
+  }
 }

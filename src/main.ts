@@ -21,10 +21,9 @@ export async function bootstrap(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  bootstrap().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'Unknown bootstrap failure';
+  bootstrap().catch(() => {
     process.stderr.write(
-      `${JSON.stringify({ event: 'affiliate_research.bootstrap_failed', message })}\n`,
+      `${JSON.stringify({ event: 'affiliate_research.bootstrap_failed', code: 'BOOTSTRAP_FAILED' })}\n`,
     );
     process.exitCode = 1;
   });

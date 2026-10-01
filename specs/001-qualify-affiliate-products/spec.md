@@ -21,6 +21,15 @@
 - Q: Quando o líder de uma categoria falhar na revalidação por uma mudança confirmada da oferta, como a rotina deve continuar? → A: Promover e revalidar o próximo candidato qualificado da mesma categoria e recalcular a comparação entre líderes.
 - Q: Como a rotina deve tratar uma categoria configurada válida quando o Mercado Livre informa oficialmente que ela não possui ranking de mais vendidos? → A: Marcar a categoria como processada sem ranking e continuar; somente falhas técnicas tornam a execução incompleta.
 
+### Session 2026-10-01
+
+- Q: Qual atraso máximo é aceitável para apagar fisicamente os registros depois de completarem 90 dias? → A: Limpeza horária enquanto o serviço estiver ativo e no startup após indisponibilidade.
+- Q: Por quanto tempo a aplicação deve manter no PostgreSQL o histórico das pesquisas, incluindo ofertas rejeitadas e links de afiliado? → A: 90 dias para todos os registros.
+- Q: Se uma execução agendada for perdida porque o processo estava parado, a aplicação deve ignorá-la ou executá-la ao voltar? → A: Ignorar execuções perdidas e aguardar o próximo horário.
+- Q: Você pretende executar o scheduler em uma única instância ou precisa permitir várias instâncias simultâneas? → A: Apenas uma instância ativa por ambiente.
+- Q: Quando uma pesquisa falhar ou terminar incompleta, como você quer ser avisado? → A: Registrar o resultado somente em logs estruturados.
+- Q: Como você quer validar a meta de concluir 95% das pesquisas em até 10 minutos, considerando que o tempo das APIs do Mercado Livre varia? → A: Benchmark automatizado com fixtures e latências simuladas.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Qualificar ofertas de baixo e médio ticket (Priority: P1)
@@ -142,6 +151,7 @@ publicar em canal externo.
   política configurada.
 - Uma interrupção deixa a pesquisa incompleta antes que todo o escopo seja analisado.
 - A periodicidade está ausente ou possui um valor inválido quando o scheduler inicia.
+- O processo fica indisponível durante um ou mais horários agendados e volta antes da próxima ocorrência.
 
 ## Requirements *(mandatory)*
 
@@ -229,6 +239,18 @@ publicar em canal externo.
 - **FR-029**: O pacote final MUST identificar a categoria e a posição do produto nela e MUST NOT
   apresentar o selecionado como mais vendido global quando a origem fornecer somente rankings por
   categoria.
+- **FR-030**: Quando a persistência estiver habilitada, a aplicação MUST excluir os registros
+  terminais de cada execução, incluindo avaliações, referências, ofertas rejeitadas e links de
+  afiliado, ao atingir 90 dias do término. A limpeza MUST executar no startup antes de registrar ou
+  retomar o scheduler e pelo menos uma vez por hora enquanto o serviço estiver ativo. Uma
+  indisponibilidade posterga a exclusão até o próximo startup, antes de qualquer pesquisa; execuções
+  ainda em andamento MUST NOT ser excluídas. Execuções sem persistência MUST NOT reter histórico.
+- **FR-031**: Ao iniciar ou recuperar-se de uma indisponibilidade, o scheduler MUST NOT executar
+  ocorrências cujo horário agendado já passou; deverá aguardar o próximo horário futuro válido.
+- **FR-032**: Cada ambiente MUST executar no máximo uma instância ativa do scheduler; múltiplas
+  réplicas simultâneas não são suportadas nesta feature.
+- **FR-033**: Falhas técnicas e execuções incompletas MUST ser registradas em logs estruturados; esta
+  feature MUST NOT enviar notificações externas de operação.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -266,8 +288,10 @@ publicar em canal externo.
 - **SC-004**: Nenhum cenário com pesquisa incompleta, autorização oficial inválida, evidência
   afiliada coletada há mais de uma hora, link incorreto ou campo obrigatório ausente resulta em
   produto selecionado.
-- **SC-005**: Pelo menos 95% das pesquisas com 1 a 10 categorias configuradas e até 200 referências
-  retornadas no total são concluídas em até 10 minutos, incluindo a revalidação final.
+- **SC-005**: Em benchmark automatizado reproduzível com fixtures de 1 a 10 categorias, até 200
+  referências e latências simuladas determinísticas das dependências externas, pelo menos 95% das
+  pesquisas são concluídas em até 10 minutos, incluindo a revalidação final; o benchmark não faz
+  chamadas reais ao Mercado Livre.
 - **SC-006**: Dada a mesma política e o mesmo retrato de ofertas, 100% de execuções repetidas
   escolhem o mesmo produto.
 - **SC-007**: Em uma revisão piloto de 20 execuções, o responsável consegue entender por que cada
@@ -282,6 +306,8 @@ publicar em canal externo.
 - **SC-011**: Em 100% dos cenários de revalidação com líderes invalidados e substitutos conhecidos,
   a rotina promove candidatos somente dentro da categoria correspondente, recalcula a comparação
   entre líderes e jamais seleciona candidato não revalidado.
+- **SC-012**: Em 100% dos testes de retomada após indisponibilidade, nenhuma ocorrência agendada
+  passada é executada como recuperação; a rotina aguarda a próxima ocorrência futura.
 
 ## Assumptions
 
@@ -311,3 +337,15 @@ publicar em canal externo.
 - O scheduler desta feature inicia a rotina na periodicidade configurada; criação de conteúdo
   promocional e envio ao Telegram serão tratados em features posteriores que consumirão o pacote
   produzido.
+- A retenção no PostgreSQL é de 90 dias após o término da execução; a limpeza ocorre no startup e
+  pelo menos de hora em hora enquanto ativa. Registros vencidos durante uma indisponibilidade são
+  removidos no startup, antes da retomada das pesquisas. Os registros associados são removidos
+  juntos e o modo sem persistência não mantém histórico.
+- Ocorrências agendadas durante uma indisponibilidade não são recuperadas; a rotina retoma no próximo
+  horário futuro configurado.
+- Cada ambiente executará uma única instância ativa do scheduler; coordenação distribuída entre
+  réplicas não faz parte desta feature.
+- Falhas e execuções incompletas serão comunicadas somente por logs estruturados; alertas externos
+  de operação ficam fora desta feature.
+- A meta de duração será validada com benchmark reproduzível usando fixtures e latências simuladas,
+  sem chamadas reais às APIs do Mercado Livre durante os testes de desempenho.
