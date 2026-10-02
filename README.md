@@ -71,13 +71,14 @@ não são recuperadas e somente uma réplica ativa é suportada.
 | Linguagem e framework | TypeScript 6, NestJS 12                         |
 | Agendamento           | `cron`                                          |
 | Persistência opcional | PostgreSQL 18, TypeORM e `pg`                   |
+| Imagem de produção    | Docker multi-stage, Node.js 24                  |
 | Testes                | Vitest e Docker Compose para E2E com PostgreSQL |
 | Gate Git local        | Husky 9 com hook `pre-push`                     |
 
-Para desenvolver ou executar a rotina, instale Node.js 24+ e npm. Docker Engine e Docker Compose
-v2 são necessários somente para `npm run test:e2e`; o serviço em si não possui imagem ou composição
-Docker de desenvolvimento/produção neste repositório. A integração de runtime precisa de acesso de
-saída às APIs oficiais do Mercado Livre e credenciais autorizadas.
+Para desenvolver ou executar a rotina localmente, instale Node.js 24+ e npm. Docker Engine é
+necessário para construir e executar a imagem e, junto com Docker Compose v2, para
+`npm run test:e2e`. Não há composição Docker de produção neste repositório. A integração de runtime
+precisa de acesso de saída às APIs oficiais do Mercado Livre e credenciais autorizadas.
 
 ## Executar localmente
 
@@ -182,10 +183,22 @@ Para habilitar localmente, provisione um PostgreSQL separado do banco E2E, defin
 `DATABASE_URL` e, conforme o ambiente, `DATABASE_SSL`. Depois de exportar as variáveis na shell:
 
 ```bash
+# Banco existente: evolua o schema com as migrations versionadas.
 npm run migration:run
 npm run migration:status
 npm run start:once
 ```
+
+Para preparar um banco novo e vazio com o SQL autocontido de deployment:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/schema.sql
+npm run migration:status
+```
+
+O script [database/schema.sql](database/schema.sql) cria as tabelas e registra as migrations
+incorporadas no ledger do TypeORM. Use-o somente em banco vazio. Bancos existentes devem continuar
+usando `npm run migration:run`; não aplique o bootstrap SQL sobre dados existentes.
 
 Migrations não são aplicadas automaticamente pelo scheduler. Com armazenamento ativo, execuções
 terminais e seus dados relacionados são retidos por 90 dias; há limpeza no startup antes de qualquer
@@ -204,48 +217,48 @@ credenciais OAuth reais nem chamadas live ao Mercado Livre.
 
 ## Implantar em produção
 
-O repositório não define provedor de hospedagem, Dockerfile da aplicação, Compose de produção,
-manifesto Kubernetes/Helm ou workflow de deploy. A sequência abaixo é um checklist operacional
-genérico; configure host, container e supervisor conforme a plataforma escolhida.
+O repositório não define provedor de hospedagem, Compose de produção, manifesto Kubernetes/Helm ou
+workflow de publicação. O [Dockerfile](Dockerfile) gera uma imagem OCI da aplicação; configure
+registry, secrets, rede e supervisor conforme a plataforma escolhida. A imagem não inclui nem
+gerencia PostgreSQL.
 
-1. **Provisionar o processo:** Linux com Node.js 24+, acesso de saída às APIs oficiais do Mercado
-   Livre e capacidade de manter um processo residente. Planeje exatamente uma réplica ativa por
-   ambiente.
+1. **Provisionar o banco, se necessário:** com `PERSISTENCE_ENABLED=false`, o serviço não conecta ao
+   PostgreSQL nem retém histórico. Com `true`, provisione PostgreSQL 18, configure `DATABASE_URL` e
+   TLS (`DATABASE_SSL`) segundo a política da plataforma. Em banco novo e vazio, aplique
+   `database/schema.sql` antes do container; para banco existente, rode as migrations versionadas
+   (`npm run migration:run` e `npm run migration:status`) em uma etapa de release com dependências de
+   desenvolvimento instaladas.
 2. **Configurar o ambiente:** forneça `NODE_ENV=production`, `EXECUTION_MODE=scheduled`, cron,
    fuso IANA, faixas de preço, desconto, categorias MLB folha e credenciais OAuth pelo mecanismo de
-   variáveis/secrets da plataforma. O app não carrega arquivos `.env`.
-3. **Disponibilizar a evidência manual:** monte ou disponibilize o arquivo JSON num caminho absoluto
-   legível, fora do Git e protegido como dado sensível. Atualize a evidência manualmente antes de
+   secrets da plataforma. O app não carrega arquivos `.env`.
+3. **Disponibilizar a evidência manual:** monte o arquivo JSON num caminho absoluto legível pelo
+   usuário não privilegiado `node`, fora da imagem e protegido como dado sensível. Configure
+   `AFFILIATE_EVIDENCE_FILE` com o mesmo caminho do mount. Atualize a evidência manualmente antes de
    expirar; não habilite automação de login/scraping.
-4. **Decidir sobre PostgreSQL:** com `PERSISTENCE_ENABLED=false`, nenhum histórico é retido. Com
-   `true`, provisione PostgreSQL 18, configure `DATABASE_URL` e TLS (`DATABASE_SSL`) segundo a
-   política da plataforma e execute as migrations como etapa de release antes de iniciar a nova
-   versão. Os scripts de migration usam `tsx`, hoje uma dependência de desenvolvimento; execute-os
-   num ambiente de release que instale as dependências completas (`npm ci`).
-5. **Compilar e migrar:** no ambiente de release com as variáveis de produção disponíveis, execute:
+4. **Construir a imagem:** na raiz do checkout:
 
    ```bash
-   npm ci
-   npm run build
-   npm run migration:run
-   npm run migration:status
+   docker build --pull -t telegram-affiliate-service:<revision> .
    ```
 
-   Se o armazenamento estiver desligado, pule as duas etapas de migration. Elas não são executadas
-   automaticamente no startup.
-
-6. **Iniciar o scheduler:** com a configuração e artefato compilado disponíveis, inicie `npm start`
-   sob o supervisor de processos escolhido. O script executa `node dist/main.js`; mantenha o processo
-   residente e permita que receba `SIGTERM` para shutdown ordenado. Observe os logs JSON sanitizados
-   e configure supervisão/alertas na plataforma, pois o serviço não envia notificações externas.
-
-   Exemplo de comando de entrada, supondo que as demais variáveis já foram injetadas pelo ambiente:
+5. **Executar o scheduler:** publique a imagem no registry escolhido e configure o serviço para uma
+   única réplica Linux, sem porta HTTP, com acesso de saída ao Mercado Livre e ao PostgreSQL quando
+   habilitado. Injete os secrets diretamente pela plataforma. Exemplo local, usando um arquivo de
+   ambiente protegido fora do repositório e a evidência montada em modo somente leitura:
 
    ```bash
-   NODE_ENV=production EXECUTION_MODE=scheduled npm start
+   docker run --rm \
+     --env-file "$RUNTIME_ENV_FILE" \
+     --mount "type=bind,src=$AFFILIATE_EVIDENCE_PATH,dst=/run/affiliate/evidence.json,readonly" \
+     telegram-affiliate-service:<revision>
    ```
 
-7. **Operar com a limitação de agendamento:** ticks concorrentes são descartados; horários perdidos
+   Configure `AFFILIATE_EVIDENCE_FILE=/run/affiliate/evidence.json` e as demais variáveis no
+   ambiente. O comando da imagem executa `node dist/main.js` diretamente como usuário `node`; SIGTERM
+   chega ao Node para acionar os hooks de shutdown do NestJS. Observe os logs JSON sanitizados e
+   configure supervisão/alertas na plataforma, pois o serviço não envia notificações externas.
+
+6. **Operar com a limitação de agendamento:** ticks concorrentes são descartados; horários perdidos
    durante downtime não são recuperados. Corrija a causa da indisponibilidade e deixe o scheduler
    aguardar a próxima ocorrência futura. Não rode mais de uma réplica.
 

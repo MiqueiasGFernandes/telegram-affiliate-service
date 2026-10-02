@@ -5,4 +5,15 @@ Dockerfile*
 *.log*
 .env*
 coverage/
+build/
 dist/
+test/
+specs/
+.specify/
+.agents/
+scripts/
+compose*.yaml
+compose*.yml
+*affiliate-evidence*.json
+.aws/
+.codex/
