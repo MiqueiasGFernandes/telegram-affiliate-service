@@ -20,6 +20,7 @@ import {
   type QualificationResult,
 } from '../../domain/services/offer-qualification.js';
 import type { NormalizedOffer } from '../../domain/entities/offer.js';
+import { errorDetails } from '../errors/error-details.js';
 import {
   compareLeaders,
   leadersByCategory,
@@ -63,10 +64,14 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
     let examined = 0;
     let qualified = 0;
     let rejected = 0;
+    let stage = 'category_validation';
+    let currentCategoryId: string | undefined;
 
     try {
       await this.gateway.validateLeafCategories(this.config.categoryIds);
       for (const categoryId of this.config.categoryIds) {
+        currentCategoryId = categoryId;
+        stage = 'ranking_fetch';
         const ranking = await this.gateway.getBestSellerRanking(categoryId);
         if (ranking.kind === 'NO_RANKING') {
           categories.push({ categoryId, status: 'PROCESSED_NO_RANKING', referenceCount: 0 });
@@ -118,6 +123,7 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
           referenceCount: ranking.references.length,
         });
         for (const ref of ranking.references) {
+          stage = 'reference_resolution';
           const referenceRecord: (typeof rankingReferences)[number] = {
             categoryId: ref.categoryId,
             effectivePosition: ref.effectivePosition,
@@ -170,6 +176,8 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
       }
 
       for (const [assessmentKey, assessed] of offerRefs) {
+        currentCategoryId = undefined;
+        stage = 'evidence_lookup';
         const { offer, refs } = assessed;
         examined++;
         const evidence = await this.evidenceReader.find(offer.productId, offer.variationKey);
@@ -215,10 +223,18 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
               : undefined) ?? [...leaders].sort(compareLeaders)[0];
           mandatoryPromotionCategory = undefined;
           if (!provisional) break;
+          currentCategoryId = provisional.categoryId;
           let current: NormalizedOffer;
           try {
+            stage = 'offer_revalidation';
             current = await this.gateway.getCurrentOffer(provisional.qualified.offer.itemId);
-          } catch {
+          } catch (error) {
+            this.logger.error('affiliate_research.revalidation_failed', {
+              runId,
+              stage: 'offer_revalidation',
+              categoryId: provisional.categoryId,
+              ...errorDetails(error),
+            });
             hasUnavailable = true;
             const category = categories.find(
               (entry) => entry.categoryId === provisional.categoryId,
@@ -236,6 +252,7 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
             reason: 'REVALIDATION_FAILED',
           };
           try {
+            stage = 'evidence_or_destination_validation';
             const currentEvidence = await this.evidenceReader.find(
               current.productId,
               current.variationKey,
@@ -257,7 +274,13 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
                 revalidated = { qualified: false, reason: 'AFFILIATE_DESTINATION_MISMATCH' };
               else revalidated = qualifyOffer(current, currentEvidence, policy, this.clock.now());
             }
-          } catch {
+          } catch (error) {
+            this.logger.error('affiliate_research.revalidation_failed', {
+              runId,
+              stage: 'evidence_or_destination_validation',
+              categoryId: provisional.categoryId,
+              ...errorDetails(error),
+            });
             hasUnavailable = true;
             const category = categories.find(
               (entry) => entry.categoryId === provisional.categoryId,
@@ -402,6 +425,7 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
         assessments: assessmentRecords,
         ...(selectedProduct ? { selectedProduct } : {}),
       };
+      stage = 'persistence_complete';
       await this.store.complete(summaryRecord);
       this.logger.info('affiliate_research.completed', {
         runId,
@@ -413,12 +437,24 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
       });
       return { summary, ...(selectedProduct ? { selectedProduct } : {}) };
     } catch (error) {
-      await this.store.fail(executionKey, 'RESEARCH_FAILED');
       this.logger.error('affiliate_research.failed', {
         runId,
         executionKey,
         failureCode: 'RESEARCH_FAILED',
+        stage,
+        ...(currentCategoryId ? { categoryId: currentCategoryId } : {}),
+        ...errorDetails(error),
       });
+      try {
+        await this.store.fail(executionKey, 'RESEARCH_FAILED');
+      } catch (storeError) {
+        this.logger.error('affiliate_research.failure_record_failed', {
+          runId,
+          executionKey,
+          stage: 'persistence_failure_record',
+          ...errorDetails(storeError),
+        });
+      }
       throw error;
     }
   }
