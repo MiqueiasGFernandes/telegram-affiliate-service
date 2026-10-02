@@ -24,7 +24,7 @@ Fornecer um DDL SQL autocontido que prepare um PostgreSQL vazio para a persistê
 
 **Performance Goals**: Não introduzir overhead significativo de startup; tamanho final deve excluir compilador, dependências de desenvolvimento e código-fonte TypeScript.
 
-**Constraints**: Uma réplica ativa por ambiente; PostgreSQL provisionado separadamente; sem segredos na imagem; sem migração automática no startup; `DATABASE_URL` exigida somente com persistência ativa; configuração do scheduler e integrações segue externa; processo deve receber SIGTERM diretamente e permitir shutdown Nest existente.
+**Constraints**: Uma réplica ativa por ambiente; PostgreSQL provisionado separadamente; sem segredos na imagem; sem migração automática no startup; `DATABASE_URL` exigida somente com persistência ativa; configuração do scheduler e integrações segue externa; processo deve receber SIGTERM diretamente e permitir shutdown Nest existente. A imagem define o caminho padrão da evidência manual em `/etc/secrets/affiliate-evidence.json`, permite override por ambiente e inclui o usuário `node` no grupo 1000 para leitura do Secret File do Render.
 
 **Scale/Scope**: Dois artefatos operacionais: SQL de bootstrap para banco vazio e imagem única da aplicação; sem Compose de produção, manifesto de provedor, pipeline de publicação ou imagem do PostgreSQL.
 

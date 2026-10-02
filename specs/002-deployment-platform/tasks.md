@@ -8,7 +8,7 @@ description: "Tarefas de implementação dos artefatos de deployment do backend"
 
 **Prerequisites**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`
 
-**Tests**: Nenhuma nova suíte automatizada foi solicitada. Os critérios independentes de validação estão registrados por história; a etapa final executa o quickstart em ambiente descartável.
+**Tests**: Nenhuma nova suíte automatizada foi solicitada. Os critérios independentes de validação estão registrados por história; a validação operacional existente está documentada no quickstart.
 
 **Organization**: Tarefas agrupadas por história, seguindo a prioridade e a ordem de entrega solicitada: DDL primeiro, imagem em seguida.
 
@@ -44,7 +44,7 @@ Não há nova infraestrutura compartilhada a criar. As migrations existentes e o
 
 **Goal**: Entregar imagem OCI reproduzível, compacta e sem privilégios para executar o processo residente em uma plataforma de containers.
 
-**Independent Test**: Construir a imagem, inspecionar usuário/comando/portas e iniciar com ambiente válido, schema previamente preparado e evidência manual montada; confirmar logs sanitizados, ausência de DDL automático e shutdown controlado por SIGTERM.
+**Independent Test**: Construir a imagem, inspecionar usuário/comando/portas e iniciar com ambiente válido, schema previamente preparado e evidência manual fornecida como arquivo em runtime; confirmar logs sanitizados, ausência de DDL automático, ausência de dependência de disco persistente para esse arquivo e shutdown controlado por SIGTERM.
 
 ### Implementation for User Story 2
 
@@ -56,11 +56,13 @@ Não há nova infraestrutura compartilhada a criar. As migrations existentes e o
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Validation
+## Phase 5: Polish & Cross-Cutting Concerns
 
-**Purpose**: Conferir a sequência completa e a documentação operacional.
+**Purpose**: Conferir a sequência completa e alinhar os contratos operacionais à decisão de fornecer arquivos de configuração em runtime.
 
 - [X] T005 Executar os cenários de `specs/002-deployment-platform/quickstart.md` em banco descartável e imagem local; comparar o SQL com ambas as migrations, confirmar ausência de migrations pendentes, usuário/comando/portas esperados na imagem e corrigir divergências em `database/schema.sql`, `Dockerfile`, `.dockerignore` ou `README.md`.
+- [X] T006 Atualizar `specs/002-deployment-platform/contracts/container-image.md`, `specs/002-deployment-platform/quickstart.md` e `README.md` para explicar que o arquivo de evidência pode ser fornecido pelo mecanismo de arquivos secretos da plataforma em runtime, indicar o caminho configurado em `AFFILIATE_EVIDENCE_FILE` e deixar explícito que arquivo estático não exige disco persistente.
+- [X] T007 Configurar `Dockerfile` com o caminho padrão `AFFILIATE_EVIDENCE_FILE=/etc/secrets/affiliate-evidence.json` e acesso do usuário `node` ao grupo 1000; atualizar `specs/002-deployment-platform/spec.md`, `specs/002-deployment-platform/plan.md`, `specs/002-deployment-platform/contracts/container-image.md`, `specs/002-deployment-platform/quickstart.md` e `README.md`; confirmar que um arquivo montado nesse caminho pode ser lido no container.
 
 ## Dependencies & Execution Order
 
@@ -70,7 +72,7 @@ Não há nova infraestrutura compartilhada a criar. As migrations existentes e o
 - **Foundational (Phase 2)**: Já satisfeito pelas migrations, configuração e scripts atuais.
 - **User Story 1 (Phase 3)**: Pode iniciar imediatamente; é o MVP.
 - **User Story 2 (Phase 4)**: Começa após a conclusão do DDL da US1 para respeitar a ordem solicitada de provisionamento antes da imagem.
-- **Polish (Phase 5)**: Depende de US1 e US2 concluídas.
+- **Polish (Phase 5)**: T006 e T007 dependem das decisões de runtime registradas na spec e dos artefatos de US2; T005 já foi executada.
 
 ### User Story Dependencies
 
@@ -81,7 +83,7 @@ Não há nova infraestrutura compartilhada a criar. As migrations existentes e o
 
 - Dentro da US2, T002 (`Dockerfile`) e T003 (`.dockerignore`) podem ser feitos em paralelo por alterarem arquivos distintos.
 - T004 depende das decisões finais de T002/T003 para documentar comandos e comportamento reais.
-- T005 é sequencial e valida o conjunto completo.
+- T005 validou o conjunto original; T006 e T007 cobrem a entrega da evidência manual pelo ambiente em runtime.
 
 ## Parallel Example: User Story 2
 
@@ -103,7 +105,9 @@ Task: T003 - Criar .dockerignore na raiz
 
 1. Entregar US1: SQL de bootstrap consistente com o ledger TypeORM.
 2. Entregar US2: imagem Node de produção e documentação de operação.
-3. Executar T005 em conjunto para validar DDL e imagem pela sequência operacional completa.
+3. T005 valida DDL e imagem pela sequência operacional completa.
+4. T006 documenta a entrega de arquivos estáticos pelo ambiente em runtime sem disco persistente.
+5. Concluir T007 para definir o caminho padrão no Docker e verificar a leitura pelo usuário sem privilégios.
 
 ## Notes
 

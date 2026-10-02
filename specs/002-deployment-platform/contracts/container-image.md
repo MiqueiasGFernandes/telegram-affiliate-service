@@ -10,8 +10,8 @@
 ## Runtime interface
 
 - Entrypoint: `node dist/main.js` in exec form.
-- Default environment: `NODE_ENV=production`; scheduler configuration, Mercado Livre credentials, evidence-file path, database URL, and all other runtime values are injected by the deployment environment.
-- Filesystem: compiled application and production dependencies are read-only in concept; evidence JSON is mounted/provided at its absolute configured path with read access for the non-root process.
+- Default environment: `NODE_ENV=production` and `AFFILIATE_EVIDENCE_FILE=/etc/secrets/affiliate-evidence.json`; scheduler configuration, Mercado Livre credentials, database URL, and other runtime values are injected by the deployment environment. The evidence-file path can be overridden by setting `AFFILIATE_EVIDENCE_FILE`.
+- Filesystem: compiled application and production dependencies are read-only in concept; evidence JSON is provided by a runtime file/secret mechanism at the path configured in `AFFILIATE_EVIDENCE_FILE`, with read access for the non-root process. On Render Docker services, a Secret File named `affiliate-evidence.json` is available at `/etc/secrets/affiliate-evidence.json`; the `node` user belongs to group 1000 to read it. Static configuration files do not require a persistent disk and must not be copied into the image.
 - Network: outbound access required for official Mercado Livre APIs and PostgreSQL when enabled; no inbound HTTP port is exposed.
 - Replicas: exactly one active replica per environment.
 - Shutdown: SIGTERM/SIGINT must reach Node directly; Nest shutdown hooks close the application context.

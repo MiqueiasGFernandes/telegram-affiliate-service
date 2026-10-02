@@ -231,10 +231,13 @@ gerencia PostgreSQL.
 2. **Configurar o ambiente:** forneça `NODE_ENV=production`, `EXECUTION_MODE=scheduled`, cron,
    fuso IANA, faixas de preço, desconto, categorias MLB folha e credenciais OAuth pelo mecanismo de
    secrets da plataforma. O app não carrega arquivos `.env`.
-3. **Disponibilizar a evidência manual:** monte o arquivo JSON num caminho absoluto legível pelo
-   usuário não privilegiado `node`, fora da imagem e protegido como dado sensível. Configure
-   `AFFILIATE_EVIDENCE_FILE` com o mesmo caminho do mount. Atualize a evidência manualmente antes de
-   expirar; não habilite automação de login/scraping.
+3. **Disponibilizar a evidência manual:** forneça o JSON por um mecanismo de arquivo secreto/runtime
+   da plataforma, num caminho absoluto legível pelo usuário não privilegiado `node`, fora da imagem.
+   Configure `AFFILIATE_EVIDENCE_FILE` com esse caminho quando ele diferir do padrão da imagem.
+   No Render, adicione `affiliate-evidence.json` em **Environment → Secret Files**; a imagem já usa
+   `/etc/secrets/affiliate-evidence.json` por padrão e o usuário `node` pode lê-lo pelo grupo 1000.
+   Não é preciso disco persistente para esse arquivo estático. Atualize a evidência manualmente antes
+   de expirar; não habilite automação de login/scraping.
 4. **Construir a imagem:** na raiz do checkout:
 
    ```bash

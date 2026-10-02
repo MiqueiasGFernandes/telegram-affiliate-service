@@ -5,6 +5,12 @@
 **Status**: Draft
 **Input**: User description: "Vamos configurar a plataforma de deployment deste backend. Primeiro preciso do Script de DDL para gerar as tabelas do banco de dados. Depois preciso do Dockerfile da Imagem"
 
+## Clarifications
+
+### Session 2026-10-02
+
+- Q: Você quer manter o arquivo para comprovar elegibilidade e comissão, usando a checagem em tempo de execução para confirmar o destino do link? → A: Manter a evidência manual; em Render, fornecê-la como Secret File em `/etc/secrets/affiliate-evidence.json`, sem exigir disco persistente. A checagem em runtime valida o destino do link, mas não substitui a comprovação de elegibilidade e comissão.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Provisionar o schema PostgreSQL (Priority: P1)
@@ -35,6 +41,7 @@ Como operador, quero uma imagem OCI reproduzível do processo Node.js, para exec
 2. **Given** variáveis de ambiente válidas e schema previamente preparado, **When** o container inicia, **Then** executa o backend em modo configurado sem expor portas HTTP.
 3. **Given** configuração obrigatória ausente ou inválida, **When** o container inicia, **Then** encerra com erro claro sem registrar segredos.
 4. **Given** um runtime de container compatível, **When** o processo recebe SIGTERM, **Then** encerra de forma controlada conforme o tratamento de shutdown existente.
+5. **Given** um Secret File `affiliate-evidence.json` fornecido pelo Render, **When** a imagem inicia sem `AFFILIATE_EVIDENCE_FILE` explícita, **Then** o processo `node` consegue ler o arquivo pelo caminho padrão `/etc/secrets/affiliate-evidence.json`; outros caminhos podem ser definidos por variável de ambiente.
 
 ## Edge Cases
 
@@ -56,7 +63,7 @@ Como operador, quero uma imagem OCI reproduzível do processo Node.js, para exec
 - **FR-004**: A aplicação MUST continuar com migrations automáticas e `synchronize` desabilitados durante o startup.
 - **FR-005**: O projeto MUST fornecer um Dockerfile reproduzível baseado no lockfile, compilando TypeScript antes de criar a imagem de runtime.
 - **FR-006**: A imagem de runtime MUST executar o processo `node dist/main.js`, não publicar portas HTTP e não incluir segredos ou configuração de ambiente específica.
-- **FR-007**: O container MUST executar como usuário não privilegiado e receber configuração e segredos por variáveis/secret manager externo.
+- **FR-007**: O container MUST executar como usuário não privilegiado e receber configuração e segredos por variáveis ou arquivos gerenciados em runtime; arquivos de configuração estáticos MUST NOT exigir disco persistente. A imagem Docker MUST definir `AFFILIATE_EVIDENCE_FILE=/etc/secrets/affiliate-evidence.json` como padrão e assegurar que o usuário `node` pertence ao grupo 1000 para ler Secret Files do Render; plataformas com outro caminho podem sobrescrevê-lo por variável de ambiente.
 - **FR-008**: A imagem MUST permanecer compatível com o requisito de Node.js 24 ou superior e com a configuração de execução de instância única definida pelo serviço.
 - **FR-009**: A documentação MUST descrever build, fornecimento de variáveis, pré-requisito de aplicação do DDL e execução do container sem assumir um provedor específico.
 - **FR-010**: O container MUST propagar sinais de término ao processo Node e permitir encerramento gracioso.

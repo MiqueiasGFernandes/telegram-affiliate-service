@@ -6,7 +6,7 @@ Este guia valida os artefatos planejados em `database/schema.sql` e `Dockerfile`
 
 - Docker com BuildKit e cliente `psql`.
 - PostgreSQL vazio na versão suportada pelo contrato do schema.
-- Para iniciar o serviço de verdade: variáveis válidas descritas em `.env.example`, segredo OAuth fornecido pelo ambiente e arquivo de evidência manual acessível no caminho absoluto configurado.
+- Para iniciar o serviço de verdade: variáveis válidas descritas em `.env.example`, segredo OAuth fornecido pelo ambiente e arquivo de evidência manual acessível no caminho absoluto configurado em `AFFILIATE_EVIDENCE_FILE`. Em plataformas com arquivos secretos de runtime, forneça o JSON por esse mecanismo; no Render, um Secret File chamado `affiliate-evidence.json` fica em `/etc/secrets/affiliate-evidence.json`. Esse arquivo estático não requer disco persistente.
 - Uma única instância agendada por ambiente.
 
 ## 1. Preparar e conferir o banco
@@ -37,7 +37,7 @@ Esperado: usuário não privilegiado (`node`), comando `node dist/main.js` e nen
 
 ## 3. Iniciar o scheduler
 
-Forneça as variáveis por um secret manager ou arquivo de ambiente protegido fora do repositório. Monte somente a evidência manual requerida pelo contrato em seu caminho absoluto:
+Forneça as variáveis por um secret manager ou arquivo de ambiente protegido fora do repositório. Para execução local, monte somente a evidência manual requerida pelo contrato em seu caminho absoluto:
 
 ```bash
 docker run --rm \
@@ -45,6 +45,8 @@ docker run --rm \
   --mount "type=bind,src=$AFFILIATE_EVIDENCE_PATH,dst=/run/affiliate/evidence.json,readonly" \
   telegram-affiliate-service:local
 ```
+
+Em um serviço Docker no Render, adicione `affiliate-evidence.json` em **Environment → Secret Files**. A imagem já usa `/etc/secrets/affiliate-evidence.json` como padrão e o usuário `node` está no grupo 1000 para ler o arquivo. Não é necessário definir `AFFILIATE_EVIDENCE_FILE`, anexar um disco persistente nem incluir o JSON na imagem. Para outros caminhos, sobrescreva essa variável no ambiente.
 
 Confirme nos logs JSON sanitizados que o contexto da aplicação inicializou, não há tentativa de criar schema automaticamente e o scheduler permanece residente. Com `PERSISTENCE_ENABLED=true`, banco e migrations devem estar prontos antes de iniciar. Envie SIGTERM pelo supervisor/container runtime e confirme encerramento controlado. Não rode duas réplicas simultaneamente.
 
