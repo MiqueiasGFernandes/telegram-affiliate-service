@@ -4,7 +4,9 @@
 
 **Organization**: tarefas agrupadas pelas três histórias da especificação. Testes estão incluídos porque os critérios de aceite e a constituição exigem validação unitária, de contratos e E2E controlada.
 
-**Progress preservation**: T001–T067 permanecem concluídas. Esta atualização acrescenta somente T068–T071 para detalhar e validar o README; o trabalho documental não altera funcionalidades do produto.
+**Progress preservation**: T001–T071 permanecem concluídas. Esta atualização acrescenta somente
+T072–T077 para instalar e validar o gate local `pre-push`; o trabalho não altera funcionalidades,
+dados ou contratos de runtime do produto.
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -154,6 +156,18 @@
 - [X] T070 Documentar checklist genérico de produção em `README.md`: configuração/secrets e evidência manual fora do Git, build compilado, migrations em etapa release com `tsx`, `npm start`, retenção/toggle PostgreSQL, exatamente uma réplica, supervisão/SIGTERM e ausência de Dockerfile/manifesto/provedor de deploy no repositório
 - [X] T071 Validar no `README.md` todos os comandos, caminhos e links relativos contra `package.json`, `.env.example`, `specs/001-qualify-affiliate-products/contracts/`, `specs/001-qualify-affiliate-products/quickstart.md` e scripts; confirmar que exemplos não contêm credenciais reais nem alegam licença, deploy automatizado ou postagem Telegram
 
+### Pre-push quality gate
+
+**Purpose**: antecipar verificações locais determinísticas antes do push sem substituir a suíte
+completa, o E2E Compose ou a varredura de segredos da CI.
+
+- [X] T072 Adicionar `husky@9.1.7` como `devDependency`, `prepare` apontando para `.husky/install.mjs` e `check:pre-push` com lint, formato, tipos, arquitetura, testes unitários/contrato/integração e build em `package.json` e `package-lock.json`
+- [X] T073 [P] Criar instalador ESM que encerra com sucesso antes de importar Husky quando `CI=true` ou `NODE_ENV=production` e ativa o Husky nos demais checkouts Git em `.husky/install.mjs`
+- [X] T074 [P] Criar hook POSIX moderno, sem `husky.sh`, que executa somente `npm run check:pre-push` e propaga seu exit code em `.husky/pre-push`
+- [X] T075 [P] Documentar instalação automática, escopo local do hook e responsabilidades remanescentes da CI em `README.md`
+- [X] T076 Validar `prepare`, `core.hooksPath`, `check:pre-push`, execução direta do hook e propagação de falha com stub temporário de `npm`, sem commit ou push real, conforme `specs/001-qualify-affiliate-products/contracts/pre-push.md`
+- [X] T077 Executar `git diff --check`, Prettier, o gate completo e a conferência de exclusões/aceitação documentadas em `specs/001-qualify-affiliate-products/quickstart.md`
+
 ---
 
 ## Dependencies & Execution Order
@@ -167,6 +181,8 @@
 - US3 (Phase 5) depende de US2 para compor/persistir o produto final; seu resumo também reporta cobertura produzida por US1. T053–T059 completam retenção e recuperação antes do aceite operacional desta história.
 - Polish (Phase 6) depende das histórias desejadas, com validação completa após US3. T064–T065 podem ser desenvolvidas em paralelo com retenção; documentação e validação final dependem de ambas.
 - README onboarding (T068–T071) é trabalho documental transversal, independente de mudança runtime, mas suas tarefas são sequenciais porque atualizam/validam o mesmo `README.md`.
+- Pre-push (T072–T077) é transversal e depende somente do setup existente. T073–T075 podem avançar
+  em paralelo depois de T072; T076 depende de T072–T075 e T077 encerra a validação.
 
 ### User Story Dependencies
 
@@ -185,6 +201,8 @@ US2 e US3 têm dependência funcional real da saída anterior; portanto não sã
 - US3: T038–T042 são verificações independentes; T053 e T054 podem ser escritas em paralelo; T055 e T056 alteram arquivos distintos e podem avançar em paralelo. T057 depende de T055–T056; T058 depende de T055 e T057; T059 integra purge e jobs ao bootstrap após T057–T058.
 - Polish: T064 e T065 alteram arquivos distintos e podem ser trabalhadas em paralelo; T066 depende do script de benchmark, e T067 depende de todas as tarefas pendentes.
 - README: não há oportunidade segura de paralelismo entre T068–T071 porque todas alteram ou validam o mesmo arquivo e cada etapa depende das afirmações consolidadas na anterior.
+- Pre-push: T073, T074 e T075 alteram arquivos distintos e podem ser executadas em paralelo após
+  T072; T076–T077 são sequenciais.
 
 ### Parallel Example: User Story 1
 
@@ -213,3 +231,5 @@ T055 contrato/no-op de purge | T056 migration/index de retenção
 4. Adicionar US3 para pacote final, scheduler e toggle de persistência; completar T053–T059 para garantir retenção de 90 dias, purge inicial fail-closed e manutenção horária.
 5. Executar benchmark determinístico e Polish; validar caminho sem banco e E2E Compose com PostgreSQL. Geração de texto/imagem promocional e publicação no Telegram permanecem fora desta feature.
 6. Concluir T068–T071 como follow-up documental: revisar escopo e arquitetura, publicar instruções locais e checklist de produção, depois validar comandos, links e segurança do README.
+7. Concluir T072–T077 como gate transversal: instalar Husky, criar instalador e hook mínimos,
+   documentar o fluxo e validar sucesso/falha sem realizar push.

@@ -491,3 +491,34 @@ provides `migration:run` and `migration:status`; `scripts/run-e2e.mjs` owns an i
 lifecycle; `.github/workflows/ci.yml` proves the CI checks; no application Dockerfile, production
 manifest, CONTRIBUTING file, or LICENSE was found. The README must say production migration is a
 separate release/deployment step and that exactly one active replica is supported.
+
+## Pre-push Hook and Local Quality Scope
+
+**Decision**: adotar Husky `9.1.7` como `devDependency`, instalado por um `prepare` que chama um
+instalador ESM versionado e ignora CI/produção. O arquivo `.husky/pre-push`, sem cabeçalho legado,
+executará somente `npm run check:pre-push`. Esse script agregará lint, verificação de formatação,
+tipos, arquitetura, testes unitários, de contrato e de integração e build, parando no primeiro erro.
+
+**Rationale**: o repositório usa npm com `package-lock.json`, Node ESM e já possui scripts públicos
+para todas essas verificações. Centralizar a composição no `package.json` torna o gate executável e
+diagnosticável sem simular um push; deixar o hook como wrapper POSIX reduz lógica específica do Git.
+O instalador condicional evita tentar ativar hooks onde não há ambiente de desenvolvimento ou onde
+Husky pode ter sido omitido. A versão 9.1.7 é o `latest` publicado no registro npm consultado em
+2026-10-01.
+
+**Alternatives considered**: executar `npm test` foi rejeitado porque essa suíte inclui benchmark e
+testes PostgreSQL condicionais conforme o ambiente. Incluir `test:e2e` foi rejeitado porque tornaria
+todo push dependente de Docker e criaria infraestrutura descartável. `lint-staged` foi rejeitado
+porque `pre-push` deve validar o estado completo que será enviado, não apenas arquivos staged. Um
+hook Git manual sem Husky foi rejeitado por não oferecer instalação reproduzível via `npm ci`.
+Duplicar a composição de comandos dentro de `.husky/pre-push` foi rejeitado por dificultar execução
+direta e manutenção.
+
+**CI boundary**: o hook oferece feedback antecipado, mas não é controle de segurança nem substitui
+`.github/workflows/ci.yml`. A CI permanece responsável pela suíte agregada, E2E com PostgreSQL em
+Docker Compose e Gitleaks. O bypass nativo `--no-verify` não é automatizado nem documentado como
+fluxo normal.
+
+**Sources**: [Husky get started](https://typicode.github.io/husky/get-started.html),
+[Husky how-to for CI and production](https://typicode.github.io/husky/how-to.html),
+[Husky package registry](https://www.npmjs.com/package/husky).

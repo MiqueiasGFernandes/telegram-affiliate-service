@@ -243,3 +243,10 @@ startup, que ocorre antes de nova pesquisa. Execuções RUNNING não expiram. Co
 desligada não há retenção. Tokens OAuth, cookies, senhas, headers crus, estado de navegador e
 payloads não sanitizados nunca são persistidos. URLs afiliadas podem ser armazenadas como link de
 compartilhamento, mas logs usam apenas identidade e fingerprint.
+
+## Pre-push Tooling Impact
+
+O hook `pre-push` não cria entidade, value object, tabela, migration, estado de domínio nem dado
+persistido. Seus únicos artefatos são configuração de desenvolvimento versionada (`package.json`,
+`package-lock.json` e `.husky/`). O resultado do gate é efêmero e representado apenas pelo código de
+saída: zero permite continuar o push; qualquer valor diferente de zero o bloqueia.

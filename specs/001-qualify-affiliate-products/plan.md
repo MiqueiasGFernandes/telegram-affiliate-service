@@ -36,19 +36,26 @@ Como trabalho documental complementar desta etapa, o README será ampliado para 
 produto, esclarecer limites de escopo e guiar a execução local e a implantação genérica em
 produção, sempre conforme comandos e restrições confirmados no repositório.
 
+Como porta de qualidade local, o repositório também receberá Husky e um hook `pre-push` mínimo que
+delega a um script versionado do `package.json`. O gate executa somente verificações determinísticas
+e sem infraestrutura externa; E2E com Docker, benchmark completo e varredura de segredos continuam
+sob responsabilidade da CI, que permanece a fonte final de integração.
+
 ## Technical Context
 
 **Language/Version**: TypeScript 6.x em Node.js 24 LTS, módulos ESM
 
 **Primary Dependencies**: NestJS 12.x (`@nestjs/core`, `@nestjs/config`), `cron`, TypeORM direto
 (DataSource condicional), `pg`, Zod, dependency-cruiser e cliente HTTP nativo do Node.js; nenhum
-framework HTTP de entrada e nenhuma automação de navegador
+framework HTTP de entrada e nenhuma automação de navegador. Husky 9.1.7 é dependência exclusiva de
+desenvolvimento para instalar o hook Git versionado
 
 **Storage**: PostgreSQL 18 quando `PERSISTENCE_ENABLED=true`; adaptador no-op sem conexão ou retenção
 quando `false`
 
 **Testing**: Vitest, `@nestjs/testing`, dependency-cruiser, Testcontainers para integrações
-isoladas, Docker Compose para dependências E2E e fixtures sanitizadas dos contratos externos
+isoladas, Docker Compose para dependências E2E e fixtures sanitizadas dos contratos externos; o
+`pre-push` roda lint, formato, tipos, arquitetura, testes isolados e build sem rede ou Docker
 
 **Target Platform**: Processo Linux/container de longa duração, uma réplica por implantação
 
@@ -64,7 +71,7 @@ ocorrência agendada
 retry limitado e backoff para chamadas externas; credenciais somente por secret/ENV; falhar fechado
 com dados incompletos; dependências arquiteturais sempre apontam para o domínio; E2E com
 dependências externas em Docker Compose; `DATABASE_URL` obrigatória somente quando a persistência
-está ligada
+está ligada; hook POSIX sem correção automática de arquivos e sem substituir os gates da CI
 
 **Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, de 1 a 10 categorias folha
 configuradas, no máximo 20 referências oficiais por categoria (200 por execução), uma política de
@@ -92,7 +99,7 @@ um comando específico de provedor.
 | Observabilidade sem exposição | PASS | Eventos JSON correlacionados, resumo terminal e URLs/segredos sensíveis fora dos logs. |
 | Integrações oficiais e substituíveis | PASS | APIs públicas atrás de porta; scraping proibido; evidência manual pode ser trocada por gateway autorizado. |
 | Separação das regras de negócio | PASS | Domínio e orquestrador não dependem de scheduler, HTTP, arquivo ou ORM. |
-| Testes e portas de qualidade | PASS | Testes unitários, arquitetura, contrato, integração, configuração, migrations e E2E com dependências reais em Compose. |
+| Testes e portas de qualidade | PASS | Testes unitários, arquitetura, contrato, integração, configuração, migrations e E2E com dependências reais em Compose; o `pre-push` antecipa os gates locais determinísticos. |
 | Documentação operacional verdadeira | PASS | O README distinguirá capacidades presentes, limites, execuções local/produção, armazenamento opcional e ausência de publicação Telegram; instruções serão rastreadas a arquivos e scripts existentes. |
 
 **Research constraint**: a automação desassistida da Central não passa pelo gate de conformidade,
@@ -115,6 +122,9 @@ processo. O README ampliado não introduz promessas de publicação, deploy auto
 em múltiplas réplicas; segredos continuam excluídos e cada comando documentado deverá existir no
 manifesto ou script correspondente.
 
+O contrato de `pre-push` não muda o modelo de domínio nem relaxa a CI: falha em qualquer comando
+local bloqueia o push, enquanto E2E, benchmark e secret scan permanecem obrigatórios no workflow.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -131,6 +141,7 @@ specs/001-qualify-affiliate-products/
 │   ├── e2e-compose.md
 │   ├── environment.md
 │   ├── mercado-livre-gateway.md
+│   ├── pre-push.md
 │   ├── run-summary.schema.json
 │   └── selected-product.schema.json
 └── tasks.md
@@ -143,6 +154,11 @@ README.md
 .env.example
 compose.e2e.yaml
 .dependency-cruiser.cjs
+package.json
+package-lock.json
+.husky/
+├── install.mjs
+└── pre-push
 scripts/
 └── run-e2e.mjs
 
@@ -219,8 +235,9 @@ Estrutura proposta, em português do Brasil e com sumário navegável:
    gestão de segredos e arquivo de evidência, saída compilada, migrations como etapa anterior ao
    start executadas em um ambiente de release com `tsx`, `npm start`, exatamente uma réplica,
    reinício/supervisão e sinais de shutdown.
-8. Testes e qualidade com comandos do `package.json`, expectativa de Docker para E2E e links à
-   especificação, quickstart, contratos de ambiente e Compose.
+8. Testes e qualidade com comandos do `package.json`, instalação automática do hook local por
+   `npm ci`, escopo do `pre-push`, expectativa de Docker para E2E e links à especificação,
+   quickstart, contratos de ambiente e Compose.
 
 Não adicionar badge, licença, provedor, Dockerfile, workflow de release, cron de plataforma ou
 comando de deploy não suportados pelo repositório. A seção de produção deve nomear as decisões que
@@ -228,10 +245,28 @@ cabem ao operador (host/container e supervisor), e não apresentar exemplos de p
 configuração oficial do projeto. Referências detalhadas de variáveis e validação ficam nos
 documentos existentes em `specs/001-qualify-affiliate-products/`.
 
-**Model / contracts impact**: nenhum agregado, tabela, variável, interface ou contrato externo é
-introduzido por documentação; `data-model.md` e `contracts/` continuam descrevendo o produto e os
-contratos atuais. `quickstart.md` complementa este plano com critérios verificáveis dos passos
-documentados.
+**Model / contracts impact**: nenhum agregado, tabela, variável, interface ou contrato externo de
+runtime é introduzido. `contracts/pre-push.md` documenta apenas a interface de desenvolvimento
+local; `data-model.md` registra explicitamente a ausência de impacto de dados. `quickstart.md`
+complementa este plano com critérios verificáveis dos passos documentados.
+
+## Pre-push Quality Gate Design
+
+- Adicionar Husky `9.1.7` como `devDependency`, preservando npm e atualizando `package-lock.json`.
+- Adicionar `prepare` apontando para `.husky/install.mjs`. O instalador não ativa hooks em CI nem
+  quando `NODE_ENV=production`; nos demais ambientes chama a API moderna do Husky e não usa o
+  cabeçalho legado `husky.sh`.
+- Criar `check:pre-push` no `package.json` com, nesta ordem: `lint`, `format:check`, `typecheck`,
+  `test:architecture`, `test:unit`, `test:contract`, `test:integration` e `build`. A composição deve
+  parar no primeiro erro e poder ser executada diretamente fora do Git.
+- Manter `.husky/pre-push` POSIX e com uma única responsabilidade: executar
+  `npm run check:pre-push`, propagando o exit code. O hook não altera arquivos e não adiciona
+  bypass automático.
+- Não incluir `test:e2e`, `test:performance`, chamadas live ou secret scan no hook. O workflow de CI
+  continua executando a suíte completa, PostgreSQL via Compose e Gitleaks; `--no-verify` permanece
+  um escape explícito do Git, nunca parte dos scripts do projeto.
+- Validar instalação por `npm ci`, `git config --get core.hooksPath`, execução direta do script e do
+  hook e um caminho de falha com um stub temporário de `npm`, sem commit ou push real.
 
 ## Modular Monolith, DDD and SOLID Boundaries
 

@@ -34,6 +34,30 @@ Expected outcome:
 - nenhuma aplicação HTTP é criada;
 - os testes unitários não precisam de rede nem PostgreSQL.
 
+## Validate the Pre-push Hook
+
+O `npm ci` deve executar o `prepare` e instalar o Husky em um checkout Git de desenvolvimento.
+Valide o contrato detalhado em [pre-push.md](./contracts/pre-push.md):
+
+```bash
+git config --get core.hooksPath
+npm run check:pre-push
+.husky/pre-push
+```
+
+Expected outcome:
+
+- `core.hooksPath` aponta para o diretório interno administrado pelo Husky;
+- o script e o hook executam lint, formato, tipos, arquitetura, testes unitários, de contrato e de
+  integração e build, na ordem documentada;
+- sucesso retorna zero e qualquer falha interrompe imediatamente com código diferente de zero;
+- nenhuma etapa altera arquivos, inicia rede, exige PostgreSQL/Docker ou cria um push real;
+- CI e `NODE_ENV=production` não tentam instalar hooks locais.
+
+O caminho de falha deve ser validado com um executável `npm` temporário no `PATH` que retorne um
+código não zero, removido ao final. Não faça commit nem push apenas para testar o hook. E2E,
+benchmark completo e secret scan continuam na CI e devem ser validados separadamente.
+
 ## Prepare Manual Affiliate Evidence
 
 1. Na Central de Afiliados, confirme manualmente que o produto e a variação são elegíveis.
@@ -281,7 +305,9 @@ Ao concluir a validação, preserve:
 - métricas de duração e contagem;
 - prova de que nenhum listener HTTP foi aberto;
 - prova de que o modo `PERSISTENCE_ENABLED=false` não inicializou PostgreSQL;
-- identificação do project name E2E e prova de teardown sem container, network ou volume órfão.
+- identificação do project name E2E e prova de teardown sem container, network ou volume órfão;
+- saída de sucesso de `check:pre-push`, `core.hooksPath` instalado e propagação de uma falha
+  controlada pelo hook sem commit ou push real.
 
 ## README Documentation Validation
 
@@ -294,7 +320,8 @@ and Docker test behavior in [e2e-compose.md](./contracts/e2e-compose.md).
 
 The README must present a complete, copyable sequence:
 
-1. Install Node.js 24+ and npm, clone the repository, and run `npm ci`.
+1. Install Node.js 24+ and npm, clone the repository, and run `npm ci`; explain that this installs
+   the local Husky hook in development checkouts.
 2. Copy `.env.example` to `.env`; replace every illustrative credential/value and configure the
    affiliate evidence file at an absolute path outside the repository. The application does not
    load `.env` itself: export the concrete values into the current shell/IDE before running any
@@ -346,3 +373,5 @@ project as production infrastructure.
   workflow that the repository does not define.
 - Secret examples remain placeholders; explain 90-day retention and the single-replica constraint.
 - All internal links resolve, commands are grouped by local run, migrations, quality checks and E2E.
+- The quality section names `npm run check:pre-push`, lists its local scope and keeps E2E,
+  performance and secret scanning as CI responsibilities.

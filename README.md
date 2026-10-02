@@ -72,6 +72,7 @@ não são recuperadas e somente uma réplica ativa é suportada.
 | Agendamento           | `cron`                                          |
 | Persistência opcional | PostgreSQL 18, TypeORM e `pg`                   |
 | Testes                | Vitest e Docker Compose para E2E com PostgreSQL |
+| Gate Git local        | Husky 9 com hook `pre-push`                     |
 
 Para desenvolver ou executar a rotina, instale Node.js 24+ e npm. Docker Engine e Docker Compose
 v2 são necessários somente para `npm run test:e2e`; o serviço em si não possui imagem ou composição
@@ -87,6 +88,9 @@ Na raiz do repositório:
 ```bash
 npm ci
 ```
+
+Em um checkout Git de desenvolvimento, o script `prepare` instala automaticamente o hook Husky.
+O instalador não ativa hooks quando `CI=true` ou `NODE_ENV=production`.
 
 ### 2. Preparar ambiente e credenciais
 
@@ -254,6 +258,7 @@ Os comandos abaixo estão definidos em `package.json`:
 
 | Comando                     | Finalidade                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `npm run check:pre-push`    | Gate local: lint, formato, tipos, arquitetura, testes isolados e build.                          |
 | `npm test`                  | Suíte Vitest; testes PostgreSQL condicionais também rodam se `DATABASE_URL` estiver no ambiente. |
 | `npm run test:unit`         | Testes unitários.                                                                                |
 | `npm run test:contract`     | Testes de contratos.                                                                             |
@@ -277,6 +282,10 @@ npm test
 npm run test:performance
 npm run build
 ```
+
+O hook `.husky/pre-push` executa `npm run check:pre-push` e bloqueia o push ao primeiro erro. Ele
+não modifica arquivos nem inicia Docker, PostgreSQL ou chamadas de rede. O E2E, o benchmark
+dedicado e a varredura de segredos permanecem na CI, que é a verificação final de integração.
 
 Execute `npm run test:e2e` quando Docker Engine e Compose v2 estiverem disponíveis.
 
