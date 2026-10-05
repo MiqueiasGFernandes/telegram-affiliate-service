@@ -11,6 +11,7 @@
     "start": "node dist/main.js",
     "start:once": "EXECUTION_MODE=once node --import tsx src/main.ts",
     "start:scheduler": "EXECUTION_MODE=scheduled node --import tsx src/main.ts",
+    "meli:authorize": "node --import tsx src/modules/mercado-livre-authorization/infrastructure/cli/authorize-mercado-livre.cli.ts",
     "config:check": "node --import tsx src/platform/config/check.ts",
     "contract:validate": "node --import tsx scripts/validate-contract.ts",
     "prepare": "node .husky/install.mjs",

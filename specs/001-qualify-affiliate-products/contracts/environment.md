@@ -63,12 +63,20 @@ Decimais usam ponto no ambiente, independentemente do locale do host.
 | `MELI_CLIENT_ID` | Required | Segredo/identificador fornecido ao aplicativo autorizado |
 | `MELI_CLIENT_SECRET` | Required | Segredo; nunca aparece em logs ou banco |
 | `MELI_REFRESH_TOKEN` | Required | Segredo rotativo; nunca aparece em logs ou banco |
+| `MELI_REDIRECT_URI` | Required only by `npm run meli:authorize` | URI HTTPS cadastrada exatamente no DevCenter; não é necessária no scheduler |
 | `MELI_HTTP_TIMEOUT_MS` | Default `10000` | Inteiro entre 1.000 e 30.000 |
 | `MELI_MAX_CONCURRENCY` | Default `4` | Inteiro entre 1 e 10 |
 | `MELI_MAX_RETRIES` | Default `3` | Inteiro entre 0 e 5; apenas falhas transitórias |
 
 O processo respeita `Retry-After` em `429`. Tokens atualizados devem retornar ao mecanismo de
 segredos do ambiente; não são persistidos nas tabelas de negócio.
+
+O comando interativo `npm run meli:authorize` automatiza a solicitação inicial: carrega as
+credenciais do ambiente ou de `.env`, gera `state` e PKCE S256, recebe do operador a URL completa
+de retorno, troca o código no endpoint oficial e atualiza somente `MELI_REFRESH_TOKEN` em `.env`
+por escrita atômica com permissão `0600`. Login e consentimento continuam manuais. Códigos,
+client secret e tokens não aparecem na saída. Esse bootstrap não substitui a persistência do novo
+refresh token devolvido em cada rotação durante a execução normal.
 
 ## Affiliate Evidence
 

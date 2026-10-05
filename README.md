@@ -108,10 +108,29 @@ Troque os valores ilustrativos por configuração real. Em particular, configure
 - `LOW_TICKET_MIN`, `LOW_TICKET_MAX`, `MEDIUM_TICKET_MIN`, `MEDIUM_TICKET_MAX` e
   `MIN_DISCOUNT_PERCENT` — decimais com ponto; as faixas de preço não podem se sobrepor;
 - Categorias MLB — descobertas pela aplicação a cada execução; seleciona até 10 folhas com maior volume de anúncios;
-- `MELI_CLIENT_ID`, `MELI_CLIENT_SECRET` e `MELI_REFRESH_TOKEN` — credenciais autorizadas;
+- `MELI_CLIENT_ID` e `MELI_CLIENT_SECRET` — credenciais do aplicativo autorizado;
+- `MELI_REDIRECT_URI` — URI HTTPS cadastrada exatamente no DevCenter, usada somente pelo comando de autorização inicial;
+- `MELI_REFRESH_TOKEN` — obtido pelo comando de autorização abaixo ou fornecido pelo mecanismo de segredos;
 - `AFFILIATE_EVIDENCE_FILE` — caminho absoluto para o arquivo JSON, fora do repositório.
 
-O processo lê `process.env` e **não carrega `.env` automaticamente**. No Bash ou Zsh, depois de
+Para obter o primeiro refresh token, deixe `MELI_REFRESH_TOKEN=replace-me` e execute em um terminal
+interativo:
+
+```bash
+npm run meli:authorize
+```
+
+O comando carrega `MELI_CLIENT_ID`, `MELI_CLIENT_SECRET`, `MELI_REDIRECT_URI` e o timeout diretamente
+de `.env`, com precedência para variáveis já exportadas. Ele exibe a URL oficial do Mercado Livre;
+faça login com a conta principal, conceda o acesso e cole no terminal a URL completa recebida no
+redirecionamento. O refresh token é salvo em `.env` com permissão `0600`, sem ser exibido. O login e
+o consentimento não são automatizados.
+
+Esse comando resolve apenas a autorização inicial. Como cada refresh token é de uso único, a
+execução em produção ainda precisa persistir duravelmente o novo token retornado a cada rotação;
+o cliente atual mantém essa rotação somente em memória.
+
+O processo principal lê `process.env` e **não carrega `.env` automaticamente**. No Bash ou Zsh, depois de
 preencher o arquivo com valores compatíveis com a sintaxe de shell, exporte-o no terminal atual:
 
 ```bash
