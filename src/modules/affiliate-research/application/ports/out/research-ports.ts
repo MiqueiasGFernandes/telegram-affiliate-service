@@ -24,6 +24,7 @@ export interface RankedReference {
 }
 
 export interface MercadoLivreGatewayPort {
+  discoverLeafCategories(limit: number): Promise<readonly DiscoveredLeafCategory[]>;
   validateLeafCategories(categoryIds: readonly string[]): Promise<void>;
   getBestSellerRanking(categoryId: string): Promise<RankingResult>;
   resolveRankedReferences(reference: RankedReference): Promise<ReferenceResolution>;
@@ -33,6 +34,11 @@ export interface MercadoLivreGatewayPort {
     productId: string,
     itemId: string,
   ): Promise<boolean>;
+}
+
+export interface DiscoveredLeafCategory {
+  readonly categoryId: string;
+  readonly itemCount: number;
 }
 
 export type ReferenceResolution =

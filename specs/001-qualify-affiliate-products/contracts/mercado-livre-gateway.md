@@ -5,11 +5,18 @@ cria um servidor HTTP na aplicação. O processo não lê nem automatiza a Centr
 
 ## Operations
 
+### `discoverLeafCategories(limit)`
+
+Obtém o dump oficial da árvore do site MLB, seleciona até dez categorias folha por
+`total_items_in_this_category` decrescente e desempata por ID ascendente. O limite aceito é de 1 a
+10. Catálogo ausente, malformado ou sem folhas válidas falha fechado; IDs não são fornecidos por
+ENV.
+
 ### `validateLeafCategories(categoryIds)`
 
-Valida em chamadas oficiais, antes de consultar qualquer ranking, de 1 a 10 IDs únicos. Todo ID
-deve existir em MLB e ser uma categoria folha. ID de outro site, inexistente ou não folha falha na
-validação da configuração e impede a pesquisa.
+Valida em chamadas oficiais, antes de consultar qualquer ranking, de 1 a 10 IDs únicos descobertos
+no dump. Todo ID deve existir em MLB e ser uma categoria folha. ID de outro site, inexistente ou
+não folha falha na validação e impede a pesquisa.
 
 ### `getBestSellerRanking(categoryId)`
 
@@ -81,7 +88,7 @@ domínio nem são persistidos.
 - Todas as operações têm timeout explícito e concorrência limitada.
 - `429` respeita `Retry-After`; retries limitados com backoff/jitter aplicam-se apenas a falhas
   transitórias documentadas.
-- Falha técnica em qualquer ranking de categoria configurada marca a execução incompleta, sem
+- Falha técnica em qualquer ranking de categoria selecionada marca a execução incompleta, sem
   produto selecionado.
 - `NO_RANKING` para folha previamente validada é uma resposta de negócio completa, não falha.
 - Cada ranking validado fornece no máximo 20 referências. Até dez categorias geram no máximo 200

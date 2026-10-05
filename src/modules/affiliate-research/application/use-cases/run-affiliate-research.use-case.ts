@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   AffiliateEvidenceReaderPort,
   ClockPort,
@@ -14,7 +14,10 @@ import type {
   RunAffiliateResearchResult,
   RunSummary,
 } from '../ports/in/run-affiliate-research.port.js';
-import { QualificationPolicy } from '../../domain/policies/qualification-policy.js';
+import {
+  MAX_RESEARCH_CATEGORIES,
+  QualificationPolicy,
+} from '../../domain/policies/qualification-policy.js';
 import {
   qualifyOffer,
   type QualificationResult,
@@ -41,16 +44,6 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
     const startedAt = this.clock.now();
     const runId = randomUUID();
     const executionKey = `affiliate-research:${input.scheduledFor.toISOString()}`;
-    const policy = QualificationPolicy.create({
-      currency: this.config.currency,
-      lowTicketMin: this.config.lowTicketMin,
-      lowTicketMax: this.config.lowTicketMax,
-      mediumTicketMin: this.config.mediumTicketMin,
-      mediumTicketMax: this.config.mediumTicketMax,
-      minimumDiscountPercent: this.config.minimumDiscountPercent,
-      categoryIds: this.config.categoryIds,
-      fingerprint: this.config.policyFingerprint,
-    });
     await this.store.begin({ executionKey, runId, startedAt });
     const categories: RunSummaryRecord['categories'][number][] = [];
     const rejectionReasons: RunSummary['rejections'][number][] = [];
@@ -64,12 +57,35 @@ export class RunAffiliateResearchUseCase implements RunAffiliateResearchPort {
     let examined = 0;
     let qualified = 0;
     let rejected = 0;
-    let stage = 'category_validation';
+    let stage = 'category_discovery';
     let currentCategoryId: string | undefined;
 
     try {
-      await this.gateway.validateLeafCategories(this.config.categoryIds);
-      for (const categoryId of this.config.categoryIds) {
+      const discoveredCategories =
+        await this.gateway.discoverLeafCategories(MAX_RESEARCH_CATEGORIES);
+      const categoryIds = discoveredCategories.map(({ categoryId }) => categoryId);
+      stage = 'category_validation';
+      await this.gateway.validateLeafCategories(categoryIds);
+      const fingerprint = createHash('sha256')
+        .update(JSON.stringify({ base: this.config.policyFingerprint, categoryIds }))
+        .digest('hex');
+      const policy = QualificationPolicy.create({
+        currency: this.config.currency,
+        lowTicketMin: this.config.lowTicketMin,
+        lowTicketMax: this.config.lowTicketMax,
+        mediumTicketMin: this.config.mediumTicketMin,
+        mediumTicketMax: this.config.mediumTicketMax,
+        minimumDiscountPercent: this.config.minimumDiscountPercent,
+        categoryIds,
+        fingerprint,
+      });
+      this.logger.info('affiliate_research.categories_discovered', {
+        runId,
+        selectionLimit: MAX_RESEARCH_CATEGORIES,
+        selectedCount: categoryIds.length,
+        categories: discoveredCategories,
+      });
+      for (const categoryId of categoryIds) {
         currentCategoryId = categoryId;
         stage = 'ranking_fetch';
         const ranking = await this.gateway.getBestSellerRanking(categoryId);

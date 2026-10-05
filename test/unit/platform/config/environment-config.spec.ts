@@ -9,7 +9,6 @@ const valid = {
   MEDIUM_TICKET_MIN: '100.00',
   MEDIUM_TICKET_MAX: '500.00',
   MIN_DISCOUNT_PERCENT: '10',
-  MELI_CATEGORY_IDS: 'MLB1234',
   MELI_CLIENT_ID: 'test-client',
   MELI_CLIENT_SECRET: 'test-secret',
   MELI_REFRESH_TOKEN: 'test-refresh-token',
@@ -23,9 +22,8 @@ describe('environment configuration', () => {
     expect(parseEnvironment({ ...valid, EXECUTION_MODE: 'once' }).executionMode).toBe('once');
   });
 
-  it('validates category count and persistence toggle strictly', () => {
-    expect(() => parseEnvironment({ ...valid, MELI_CATEGORY_IDS: 'MLB1,MLB1' })).toThrow();
-    expect(() => parseEnvironment({ ...valid, MELI_CATEGORY_IDS: '' })).toThrow();
+  it('does not require category IDs from the environment and validates persistence toggle strictly', () => {
+    expect(parseEnvironment(valid)).toBeDefined();
     expect(() => parseEnvironment({ ...valid, PERSISTENCE_ENABLED: 'yes' })).toThrow();
   });
 });

@@ -22,8 +22,9 @@ Afiliados.
 
 ## O que o serviço faz
 
-Em cada execução, o serviço valida de 1 a 10 categorias folha MLB configuradas e consulta os
-rankings oficiais dessas categorias. Ele avalia todas as referências retornadas — até 20 por
+Em cada execução, o serviço consulta a árvore oficial MLB, escolhe até 10 categorias folha com
+maior volume de anúncios (desempate pelo ID) e valida as folhas antes de consultar seus rankings.
+Ele avalia todas as referências retornadas — até 20 por
 categoria — usando critérios configuráveis de faixa de preço, desconto, disponibilidade,
 popularidade, imagem e elegibilidade para afiliados.
 
@@ -106,7 +107,7 @@ Troque os valores ilustrativos por configuração real. Em particular, configure
 - `SCHEDULE_CRON` e `SCHEDULE_TIMEZONE` — ambos obrigatórios, inclusive para execução única;
 - `LOW_TICKET_MIN`, `LOW_TICKET_MAX`, `MEDIUM_TICKET_MIN`, `MEDIUM_TICKET_MAX` e
   `MIN_DISCOUNT_PERCENT` — decimais com ponto; as faixas de preço não podem se sobrepor;
-- `MELI_CATEGORY_IDS` — de 1 a 10 IDs MLB únicos, válidos e correspondentes a categorias folha;
+- Categorias MLB — descobertas pela aplicação a cada execução; seleciona até 10 folhas com maior volume de anúncios;
 - `MELI_CLIENT_ID`, `MELI_CLIENT_SECRET` e `MELI_REFRESH_TOKEN` — credenciais autorizadas;
 - `AFFILIATE_EVIDENCE_FILE` — caminho absoluto para o arquivo JSON, fora do repositório.
 

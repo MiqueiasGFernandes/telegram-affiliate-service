@@ -5,8 +5,8 @@
 - O domínio é idêntico com persistência ligada ou desligada; somente a porta de armazenamento muda.
 - Valores monetários são decimais exatos, carregam moeda e nunca usam ponto flutuante binário.
 - Todo instante persistido representa um instante UTC; o fuso civil pertence à configuração do job.
-- Política, categorias configuradas e retratos de oferta são imutáveis dentro de uma execução.
-- Uma execução contém 1 a 10 categorias configuradas, referências de ranking, avaliações únicas e no
+- Política, categorias descobertas e retratos de oferta são imutáveis dentro de uma execução.
+- Uma execução contém até 10 categorias folha selecionadas dinamicamente, referências de ranking, avaliações únicas e no
   máximo um produto selecionado.
 - Uma mesma oferta pode pertencer a várias categorias: a avaliação comercial é única, as posições
   de ranking permanecem separadas por categoria.
@@ -31,8 +31,8 @@ Value object imutável criado a partir da configuração validada.
 | lowTicketMin / lowTicketMax | Money | Limites inclusivos; min ≤ max |
 | mediumTicketMin / mediumTicketMax | Money | min > lowTicketMax; min ≤ max |
 | minimumDiscountPercent | Decimal percent | Maior que zero e menor ou igual a 100 |
-| categoryIds | Ordered unique string list | De 1 a 10 folhas MLB validadas oficialmente; ordem canônica por ID |
-| fingerprint | SHA-256 string | Hash da representação canônica de moeda, limites, desconto e categorias |
+| categoryIds | Ordered unique string list | Até 10 folhas MLB descobertas por volume de anúncios e validadas oficialmente |
+| fingerprint | SHA-256 string | Hash da política e das categorias selecionadas para esta execução |
 
 Não há `maxOffersPerRun`: o máximo bruto de 200 é derivado de dez categorias com até vinte
 referências cada. Nenhuma referência oficial é descartada por corte configurável.
@@ -51,7 +51,7 @@ Aggregate root de uma ocorrência lógica do scheduler.
 | scheduledFor / startedAt | Instant | Obrigatórios |
 | finishedAt | Instant/null | Obrigatório em estado terminal |
 | status | ResearchExecutionStatus | `CREATED`, `RUNNING`, `COMPLETED_WITH_SELECTION`, `COMPLETED_NO_SELECTION`, `INCOMPLETE`, `FAILED`, `INTERRUPTED`, `SKIPPED_OVERLAP` |
-| categoryResults | CategoryProcessingResult[] | Um resultado por categoria configurada |
+| categoryResults | CategoryProcessingResult[] | Um resultado por categoria selecionada dinamicamente |
 | rankingEntries | CategoryCandidateReference[] | Proveniência de cada referência por categoria |
 | assessments | OfferAssessment[] | Uma por produto/variação única |
 | selectedProduct | SelectedProduct/null | No máximo um |
@@ -82,7 +82,7 @@ Representa uma posição em um ranking; não duplica a avaliação de produto.
 
 | Field | Type | Rules |
 |---|---|---|
-| categoryId | String | Categoria folha configurada |
+| categoryId | String | Categoria folha descoberta e selecionada para a execução |
 | effectivePosition | Positive integer | Posição usada pelo domínio: posição oficial se fornecida; senão índice estável 1–20 na lista |
 | reportedPosition | Positive integer/null | Posição explícita fornecida pela API, se houver |
 | referenceType | Enum | `ITEM`, `PRODUCT` ou `USER_PRODUCT` |

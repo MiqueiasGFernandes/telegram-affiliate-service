@@ -20,7 +20,6 @@ export interface AppConfig {
   readonly mediumTicketMin: string;
   readonly mediumTicketMax: string;
   readonly minimumDiscountPercent: string;
-  readonly categoryIds: readonly string[];
   readonly meliSiteId: 'MLB';
   readonly meliClientId: string;
   readonly meliClientSecret: string;
@@ -125,19 +124,6 @@ export function parseEnvironment(env: NodeJS.ProcessEnv): AppConfig {
     throw new Error('MIN_DISCOUNT_PERCENT must be greater than 0 and at most 100');
   }
 
-  const categoryIds = required(env, 'MELI_CATEGORY_IDS')
-    .split(',')
-    .map((id) => id.trim());
-  if (
-    categoryIds.length < 1 ||
-    categoryIds.length > 10 ||
-    categoryIds.some((id) => !/^MLB\d+$/.test(id))
-  ) {
-    throw new Error('MELI_CATEGORY_IDS must contain 1 to 10 MLB category IDs');
-  }
-  if (new Set(categoryIds).size !== categoryIds.length)
-    throw new Error('MELI_CATEGORY_IDS must be unique');
-
   const persistenceEnabled = boolean(env, 'PERSISTENCE_ENABLED', false);
   let databaseUrl: string | undefined;
   if (persistenceEnabled) {
@@ -169,7 +155,6 @@ export function parseEnvironment(env: NodeJS.ProcessEnv): AppConfig {
       mediumTicketMin,
       mediumTicketMax,
       minimumDiscountPercent,
-      categoryIds: [...categoryIds].sort(),
     }),
   );
   return {
@@ -189,7 +174,6 @@ export function parseEnvironment(env: NodeJS.ProcessEnv): AppConfig {
     mediumTicketMin,
     mediumTicketMax,
     minimumDiscountPercent,
-    categoryIds,
     meliSiteId,
     meliClientId: required(env, 'MELI_CLIENT_ID'),
     meliClientSecret: required(env, 'MELI_CLIENT_SECRET'),

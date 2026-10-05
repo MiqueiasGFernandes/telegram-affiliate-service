@@ -12,14 +12,14 @@ interfaces oficiais que cada ID existe no site MLB e identifica uma categoria fo
 todas as referências devolvidas por cada ranking, até 20 por categoria; o máximo de 200 é derivado,
 nunca um limite configurável que trunca resultados.
 
-**Rationale**: o limite configura um escopo operacional verificável e compatível com SC-005 e com
-a expiração de evidência de uma hora, mantendo ausência de scraping. Categoria inválida impede o
-início da pesquisa. A lista configurada substitui uma enumeração integral da árvore MLB, que tem
-milhares de folhas e não representa o escopo exibido na Central de Afiliados.
+**Rationale (atualizado em 2026-10-04)**: a árvore oficial completa é obtida em uma chamada de dump;
+o serviço seleciona somente até dez folhas com maior volume de anúncios, desempata por ID e valida
+essas folhas antes de pesquisar rankings. Assim não há necessidade de ENV com IDs e o volume de
+rankings segue compatível com SC-005 e com a expiração de evidência de uma hora, sem scraping.
 
-**Alternatives considered**: enumerar toda a árvore pública em cada execução foi rejeitado por
-volume e incompatibilidade com a janela de evidência. Categorias inferidas do arquivo de evidências
-foram rejeitadas porque omitem categorias configuradas sem evidência para os produtos do snapshot.
+**Alternatives considered**: pesquisar rankings para todas as folhas da árvore pública foi rejeitado
+por volume e incompatibilidade com a janela de evidência. Categorias inferidas do arquivo de evidências
+foram rejeitadas porque omitem categorias selecionadas sem evidência para os produtos do snapshot.
 Limite de ofertas menor que o resultado oficial foi rejeitado por causar truncamento silencioso.
 
 ## Runtime e baseline

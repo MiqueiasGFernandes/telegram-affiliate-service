@@ -47,7 +47,6 @@ const config = parseEnvironment({
   MEDIUM_TICKET_MIN: '100',
   MEDIUM_TICKET_MAX: '500',
   MIN_DISCOUNT_PERCENT: '10',
-  MELI_CATEGORY_IDS: 'MLB1,MLB2',
   MELI_CLIENT_ID: 'id',
   MELI_CLIENT_SECRET: 'secret',
   MELI_REFRESH_TOKEN: 'refresh',
@@ -126,7 +125,15 @@ describe('category leader promotion and tournament', () => {
       ]),
     );
     const calls: string[] = [];
+    let categoryLimitUsed = 0;
     const gateway: MercadoLivreGatewayPort = {
+      discoverLeafCategories: async (limit) => {
+        categoryLimitUsed = limit;
+        return [
+          { categoryId: 'MLB1', itemCount: 200 },
+          { categoryId: 'MLB2', itemCount: 100 },
+        ].slice(0, limit);
+      },
       validateLeafCategories: async () => undefined,
       getBestSellerRanking: async (categoryId) => ({
         kind: 'RANKING_AVAILABLE',
@@ -167,6 +174,7 @@ describe('category leader promotion and tournament', () => {
       clock,
       logger,
     ).execute({ scheduledFor: now, mode: 'ONCE' });
+    expect(categoryLimitUsed).toBe(10);
     expect(calls).toEqual(['bad', 'next', 'other']);
     expect(result.summary.status).toBe('COMPLETED_WITH_SELECTION');
     expect(result.selectedProduct).toMatchObject({

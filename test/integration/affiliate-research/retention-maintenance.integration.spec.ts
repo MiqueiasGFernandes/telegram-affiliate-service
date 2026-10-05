@@ -14,7 +14,6 @@ const config = (mode: 'once' | 'scheduled') =>
     MEDIUM_TICKET_MIN: '100',
     MEDIUM_TICKET_MAX: '500',
     MIN_DISCOUNT_PERCENT: '10',
-    MELI_CATEGORY_IDS: 'MLB123',
     MELI_CLIENT_ID: 'fake',
     MELI_CLIENT_SECRET: 'fake',
     MELI_REFRESH_TOKEN: 'fake',

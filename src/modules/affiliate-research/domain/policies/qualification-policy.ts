@@ -1,5 +1,7 @@
 import { compareDecimal } from '../value-objects/decimal.js';
 
+export const MAX_RESEARCH_CATEGORIES = 10;
+
 export interface QualificationPolicyInput {
   readonly currency: string;
   readonly lowTicketMin: string;
@@ -28,7 +30,7 @@ export class QualificationPolicy {
       throw new Error('Invalid minimum discount');
     if (
       input.categoryIds.length < 1 ||
-      input.categoryIds.length > 10 ||
+      input.categoryIds.length > MAX_RESEARCH_CATEGORIES ||
       new Set(input.categoryIds).size !== input.categoryIds.length
     )
       throw new Error('Expected one to ten unique categories');

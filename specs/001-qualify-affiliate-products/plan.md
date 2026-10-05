@@ -9,8 +9,8 @@
 Construir uma aplicação standalone em NestJS e TypeScript, sem servidor HTTP, que mantém um único
 job de negócio agendado e uma manutenção técnica de retenção. Toda pesquisa, qualificação,
 ordenação, revalidação e seleção fica em uma única rotina de aplicação. A rotina usa somente APIs
-públicas documentadas do Mercado Livre para validar
-entre 1 e 10 categorias folha MLB configuradas e obter seus rankings, produtos e preços. Ranking
+APIs públicas documentadas do Mercado Livre para obter a árvore MLB, selecionar até dez categorias folha
+por volume de anúncios e obter seus rankings, produtos e preços. Ranking
 oficial ausente conta como categoria processada sem candidatos; falha técnica ou resposta parcial
 torna a execução incompleta. Como não existe contrato público para elegibilidade, comissão e geração
 de link de afiliado, esses dados entram por arquivo de evidências preenchido manualmente nas
@@ -73,8 +73,8 @@ com dados incompletos; dependências arquiteturais sempre apontam para o domíni
 dependências externas em Docker Compose; `DATABASE_URL` obrigatória somente quando a persistência
 está ligada; hook POSIX sem correção automática de arquivos e sem substituir os gates da CI
 
-**Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, de 1 a 10 categorias folha
-configuradas, no máximo 20 referências oficiais por categoria (200 por execução), uma política de
+**Scale/Scope**: Um bounded context, um perfil de afiliado, site MLB, até 10 categorias folha
+descobertas dinamicamente, no máximo 20 referências oficiais por categoria (200 por execução), uma política de
 qualificação ativa, zero ou um produto selecionado, retenção PostgreSQL por 90 dias após o término
 da execução e exatamente uma réplica ativa por ambiente
 
@@ -111,7 +111,7 @@ adaptador após autorização formal ou publicação de um contrato oficial pelo
 
 **Status: PASS**. O modelo, os contratos e o quickstart preservam todos os gates. Cobertura por
 categoria distingue ranking processado, ausência oficial de ranking e falha técnica; a execução só
-é selecionável quando todas as categorias configuradas foram processadas. Regras estáticas
+é selecionável quando todas as categorias selecionadas foram processadas. Regras estáticas
 impedem dependências invertidas ou imports profundos entre módulos, e os E2E partem de PostgreSQL
 limpo e saudável no Compose. Com persistência ativa, manutenção remove execuções terminais e todos
 os dados associados ao atingir 90 dias: purge síncrono no startup antes de qualquer pesquisa e
@@ -307,8 +307,9 @@ complementa este plano com critérios verificáveis dos passos documentados.
    descartados; ocorrências perdidas durante indisponibilidade não são enfileiradas, e o processo
    aguarda o próximo horário futuro.
 3. O gatilho cria `executionKey` a partir do nome da rotina e do instante agendado em UTC.
-4. A rotina consulta e valida cada uma das 1 a 10 categorias folha configuradas; “sem ranking” oficial
-   é terminal e completo para aquela categoria.
+4. A rotina baixa a árvore MLB, seleciona até 10 folhas com maior volume de anúncios, desempata por
+   ID, valida as folhas selecionadas e consulta cada uma; “sem ranking” oficial é terminal e
+   completo para aquela categoria.
 5. As referências (até 20 por categoria) são resolvidas por tipo através de operações oficiais,
    normalizadas, deduplicadas por produto/variação e pré-qualificadas.
 6. A rotina associa evidência afiliada manual fresca pelo par produto/variação; válida somente antes

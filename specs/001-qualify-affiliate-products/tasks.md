@@ -40,7 +40,7 @@ dados ou contratos de runtime do produto.
 
 ## Phase 3: User Story 1 - Qualificar ofertas de baixo e médio ticket (Priority: P1) 🎯 MVP
 
-**Goal**: Consultar todas as categorias configuradas, avaliar cada produto/variação única e reter ofertas qualificadas com motivo auditável.
+**Goal**: Descobrir até dez categorias MLB automaticamente, avaliar cada produto/variação única e reter ofertas qualificadas com motivo auditável.
 
 **Independent Test**: Executar a pesquisa contra adapters/fixtures conhecidos; conferir qualificações, rejeições e completude de categoria sem exigir seleção final ou publicação.
 
@@ -48,9 +48,9 @@ dados ou contratos de runtime do produto.
 
 - [X] T015 [P] [US1] Testar limites de ticket inclusivos, desconto mínimo, consistência de preços, comissão e motivos de rejeição em `test/unit/affiliate-research/domain/qualification-policy.spec.ts`
 - [X] T016 [P] [US1] Testar deduplicação por produto/variação mantendo memberships e posições em `test/unit/affiliate-research/domain/offer-assessment.spec.ts`
-- [X] T017 [P] [US1] Testar contrato de categoria folha e resultados ranking disponível/sem ranking/indisponível em `test/contract/mercado-livre-gateway.contract.spec.ts`
+- [X] T017 [P] [US1] Testar descoberta oficial da árvore, prioridade por volume, limite de dez, validação de folhas e resultados ranking disponível/sem ranking/indisponível em `test/contract/mercado-livre-gateway.contract.spec.ts`
 - [X] T018 [P] [US1] Testar leitura, vínculo, fingerprint e expiração de evidência manual de 1 hora em `test/contract/affiliate-evidence.contract.spec.ts`
-- [X] T019 [P] [US1] Testar pesquisa de 1–10 categorias, até 20 referências por categoria, ordem efetiva por posição explícita ou índice estável e falha incompleta em `test/integration/affiliate-research/qualification.integration.spec.ts`
+- [X] T019 [P] [US1] Testar pesquisa com categorias dinamicamente descobertas (máximo dez), até 20 referências por categoria, ordem efetiva e falha incompleta em `test/integration/affiliate-research/qualification.integration.spec.ts`
 
 ### Implementation for User Story 1
 
@@ -58,10 +58,10 @@ dados ou contratos de runtime do produto.
 - [X] T021 [US1] Implementar normalização e validação dos campos comerciais, com moeda igual à política, preços positivos e desconto menor que preço original em `src/modules/affiliate-research/domain/services/`
 - [X] T022 [US1] Implementar avaliação de oferta: condição `NEW`, disponibilidade, ticket, desconto mínimo, evidência de venda, título, imagem e evidência afiliada válidos em `src/modules/affiliate-research/domain/services/`
 - [X] T023 [US1] Implementar adapter OAuth e cliente oficial Mercado Livre com timeout explícito, concorrência limitada e retry limitado respeitando `Retry-After` em `src/modules/affiliate-research/infrastructure/mercado-livre/`
-- [X] T024 [US1] Implementar validação oficial das categorias MLB folha antes das consultas de ranking em `src/modules/affiliate-research/infrastructure/mercado-livre/`
+- [X] T024 [US1] Implementar descoberta da árvore MLB, seleção por volume limitada a dez e validação oficial das folhas antes dos rankings em `src/modules/affiliate-research/infrastructure/mercado-livre/`
 - [X] T025 [US1] Implementar consulta e resolução oficial de `ITEM`, `PRODUCT` e `USER_PRODUCT`, sem navegador, scraping ou endpoint não documentado, em `src/modules/affiliate-research/infrastructure/mercado-livre/`
 - [X] T026 [US1] Implementar adapter de evidências `manual-file`, impondo expiração efetiva `min(validUntil, capturedAt + 1 hora)` em `src/modules/affiliate-research/infrastructure/affiliate-evidence/`
-- [X] T027 [US1] Implementar caso de uso de pesquisa que consome todas as referências de 1–10 categorias, deduplica avaliações e marca ausência oficial de ranking como processada em `src/modules/affiliate-research/application/use-cases/run-affiliate-research.use-case.ts`
+- [X] T027 [US1] Implementar caso de uso de pesquisa que consome todas as referências das categorias descobertas (máximo dez), deduplica avaliações e marca ausência oficial de ranking como processada em `src/modules/affiliate-research/application/use-cases/run-affiliate-research.use-case.ts`
 - [X] T028 [US1] Implementar classificação final de execução como incompleta sem seleção quando qualquer categoria falhar tecnicamente, parcialmente ou por contrato inválido no mesmo caso de uso em `src/modules/affiliate-research/application/use-cases/run-affiliate-research.use-case.ts`
 - [X] T029 [US1] Criar fixtures sanitizadas de categorias, rankings, referências e evidências sem credenciais reais em `test/fixtures/affiliate-research/`
 

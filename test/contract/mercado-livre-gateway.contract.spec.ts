@@ -4,6 +4,7 @@ import {
   RankingContractError,
 } from '../../src/modules/affiliate-research/infrastructure/mercado-livre/ranking.mapper.js';
 import { MercadoLivreApiClient } from '../../src/modules/affiliate-research/infrastructure/mercado-livre/mercado-livre-api.client.js';
+import { mapTopLeafCategories } from '../../src/modules/affiliate-research/infrastructure/mercado-livre/category-catalog.mapper.js';
 
 const config = {
   meliClientId: 'client-test',
@@ -17,6 +18,87 @@ const jsonResponse = (body: unknown, status = 200, headers?: HeadersInit) =>
   new Response(JSON.stringify(body), { status, ...(headers ? { headers } : {}) });
 
 describe('Mercado Livre ranking contract', () => {
+  it('fetches the category dump through the official gateway and applies the requested cap', async () => {
+    const requested: string[] = [];
+    const client = new MercadoLivreApiClient(config, {
+      fetcher: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.endsWith('/oauth/token'))
+          return jsonResponse({ access_token: 'access', expires_in: 3600 });
+        if (url.endsWith('/sites/MLB/categories/all'))
+          return jsonResponse([
+            {
+              id: 'MLB1',
+              total_items_in_this_category: 200,
+              children_categories: [
+                { id: 'MLB11', total_items_in_this_category: 8, children_categories: [] },
+                { id: 'MLB12', total_items_in_this_category: 25, children_categories: [] },
+                { id: 'MLB13', total_items_in_this_category: 18, children_categories: [] },
+              ],
+            },
+          ]);
+        if (url.endsWith('/categories/MLB12') || url.endsWith('/categories/MLB13'))
+          return jsonResponse({
+            id: url.split('/').at(-1),
+            site_id: 'MLB',
+            children_categories: [],
+          });
+        return jsonResponse({ message: 'unexpected request' }, 404);
+      },
+    });
+
+    const categories = await client.discoverLeafCategories(2);
+    await client.validateLeafCategories(categories.map(({ categoryId }) => categoryId));
+
+    expect(categories).toEqual([
+      { categoryId: 'MLB12', itemCount: 25 },
+      { categoryId: 'MLB13', itemCount: 18 },
+    ]);
+    expect(requested).toContain('https://api.mercadolibre.com/sites/MLB/categories/all');
+  });
+
+  it('selects the highest-volume leaf categories from the official category tree', () => {
+    const categories = mapTopLeafCategories(
+      {
+        MLB1: {
+          id: 'MLB1',
+          total_items_in_this_category: 1000,
+          children_categories: [
+            { id: 'MLB3', total_items_in_this_category: 20, children_categories: [] },
+            { id: 'MLB2', total_items_in_this_category: 50, children_categories: [] },
+          ],
+        },
+      },
+      1,
+    );
+    expect(categories).toEqual([{ categoryId: 'MLB2', itemCount: 50 }]);
+  });
+
+  it('breaks equal-volume category ties by ID and rejects malformed catalog entries', () => {
+    const categories = mapTopLeafCategories(
+      [
+        { id: 'MLB2', total_items_in_this_category: 8, children_categories: [] },
+        { id: 'MLB1', total_items_in_this_category: 8, children_categories: [] },
+      ],
+      2,
+    );
+    expect(categories.map(({ categoryId }) => categoryId)).toEqual(['MLB1', 'MLB2']);
+    expect(() => mapTopLeafCategories([{ id: 'MLB3' }], 1)).toThrow('no child list');
+  });
+
+  it('never selects more than ten leaf categories', () => {
+    const categories = Array.from({ length: 12 }, (_, index) => ({
+      id: `MLB${index + 1}`,
+      total_items_in_this_category: index + 1,
+      children_categories: [],
+    }));
+    const selected = mapTopLeafCategories(categories, 10);
+    expect(selected).toHaveLength(10);
+    expect(selected[0]).toEqual({ categoryId: 'MLB12', itemCount: 12 });
+    expect(() => mapTopLeafCategories(categories, 11)).toThrow('integer from 1 to 10');
+  });
+
   it('maps typed ranking entries and uses stable list order if position is absent', () => {
     const mapped = mapRankingPayload(
       'MLB1',

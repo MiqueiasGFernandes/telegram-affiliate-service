@@ -7,7 +7,7 @@ existir durante a fase de implementação; este documento não contém código d
 
 - Node.js 24 LTS e npm compatível.
 - Credenciais OAuth de uma aplicação Mercado Livre autorizada para as operações públicas usadas.
-- De 1 a 10 IDs únicos de categorias folha MLB para configurar em `MELI_CATEGORY_IDS`.
+- A aplicação descobre automaticamente até 10 categorias folha MLB com maior volume de anúncios.
 - Arquivo de evidência afiliada preenchido pela Central oficial e válido conforme
   [affiliate-evidence.schema.json](./contracts/affiliate-evidence.schema.json).
 - Docker Engine e Docker Compose v2 para os E2E; PostgreSQL local não é necessário.
@@ -93,7 +93,6 @@ LOW_TICKET_MAX=<decimal>
 MEDIUM_TICKET_MIN=<decimal>
 MEDIUM_TICKET_MAX=<decimal>
 MIN_DISCOUNT_PERCENT=<decimal>
-MELI_CATEGORY_IDS=<1-to-10-comma-separated-MLB-leaf-category-ids>
 MELI_CLIENT_ID=<secret>
 MELI_CLIENT_SECRET=<secret>
 MELI_REFRESH_TOKEN=<secret>
@@ -113,7 +112,7 @@ Expected outcome:
 - o contexto Nest inicia sem porta HTTP;
 - nenhum driver, pool ou tentativa de conexão PostgreSQL é criado;
 - a inicialização valida cron e timezone obrigatórios mesmo no modo `once`;
-- antes do ranking, cada categoria configurada é validada oficialmente como folha MLB;
+- antes do ranking, cada categoria selecionada automaticamente é validada oficialmente como folha MLB;
 - exatamente uma execução processa todas as referências devolvidas por todas as categorias,
   qualifica, ordena e revalida;
 - cada ranking contém até 20 referências; 10 categorias produzem até 200 sem truncamento;

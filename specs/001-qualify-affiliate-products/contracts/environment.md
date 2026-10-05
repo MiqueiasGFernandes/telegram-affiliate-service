@@ -51,7 +51,7 @@ Regras condicionais:
 | `MEDIUM_TICKET_MIN` | Required | Estritamente maior que `LOW_TICKET_MAX` |
 | `MEDIUM_TICKET_MAX` | Required | Maior ou igual a `MEDIUM_TICKET_MIN` |
 | `MIN_DISCOUNT_PERCENT` | Required | Decimal maior que zero e menor ou igual a 100 |
-| `MELI_CATEGORY_IDS` | Required | De 1 a 10 IDs MLB únicos; cada ID é validado oficialmente como categoria folha antes da consulta aos rankings |
+| Categorias pesquisadas | Sem ENV | Obtidas da árvore oficial MLB em cada execução; até 10 folhas com maior volume, desempate por ID ascendente |
 
 Decimais usam ponto no ambiente, independentemente do locale do host.
 

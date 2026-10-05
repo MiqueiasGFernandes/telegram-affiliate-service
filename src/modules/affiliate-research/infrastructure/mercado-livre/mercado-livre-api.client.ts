@@ -6,10 +6,13 @@ import type {
   ReferenceResolution,
 } from '../../application/ports/out/research-ports.js';
 import type { NormalizedOffer } from '../../domain/entities/offer.js';
+import { MAX_RESEARCH_CATEGORIES } from '../../domain/policies/qualification-policy.js';
+import { mapTopLeafCategories } from './category-catalog.mapper.js';
 import { mapRankingPayload } from './ranking.mapper.js';
 
 const API_BASE = 'https://api.mercadolibre.com';
 const OAUTH_URL = `${API_BASE}/oauth/token`;
+const MLB_CATEGORY_CATALOG_URL = `${API_BASE}/sites/MLB/categories/all`;
 
 class MercadoLivreHttpError extends Error {
   constructor(
@@ -52,13 +55,21 @@ export class MercadoLivreApiClient implements MercadoLivreGatewayPort {
       ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   }
 
+  async discoverLeafCategories(limit: number) {
+    const catalog = await this.getJson(MLB_CATEGORY_CATALOG_URL);
+    const categories = mapTopLeafCategories(catalog, limit);
+    if (categories.length === 0)
+      throw new Error('Mercado Livre returned no MLB leaf categories with active listings');
+    return categories;
+  }
+
   async validateLeafCategories(categoryIds: readonly string[]): Promise<void> {
     if (
       categoryIds.length < 1 ||
-      categoryIds.length > 10 ||
+      categoryIds.length > MAX_RESEARCH_CATEGORIES ||
       new Set(categoryIds).size !== categoryIds.length
     )
-      throw new Error('Invalid configured category list');
+      throw new Error('Invalid discovered category list');
     for (const id of categoryIds) {
       const category = (await this.getJson(
         `${API_BASE}/categories/${encodeURIComponent(id)}`,

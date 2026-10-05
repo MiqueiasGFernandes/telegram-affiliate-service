@@ -15,11 +15,11 @@
 - Q: Você prefere substituir o scraping por um login manual com coleta oficial, ou condicionar a automação do navegador a uma autorização escrita do Mercado Livre? → A: Login manual e coleta por APIs/ferramentas oficiais, sem scraping automatizado.
 - Q: Por quanto tempo uma evidência manual de elegibilidade, comissão e link deve permanecer válida antes de exigir nova coleta? → A: 1 hora.
 - Q: A aplicação deve exigir que a periodicidade do scheduler seja configurada em cada ambiente ou usar um intervalo padrão? → A: Periodicidade obrigatoriamente configurada, sem padrão.
-- Q: A rotina deve pesquisar uma única categoria por execução ou combinar produtos de várias categorias? → A: Todas as categorias disponíveis no escopo configurado.
+- Q: A rotina deve pesquisar uma única categoria por execução ou combinar produtos de várias categorias? → A: Todas as categorias selecionadas dinamicamente para aquela execução.
 - Q: Como a rotina deve escolher um único produto quando os primeiros colocados pertencem a categorias cujos rankings não são comparáveis entre si? → A: Comparar os líderes de cada categoria por desconto, comissão e identificador da categoria.
-- Q: Qual conjunto de categorias a rotina deve processar em cada execução? → A: Todas as categorias folha configuradas, entre 1 e 10 por ambiente.
+- Q: Qual conjunto de categorias a rotina deve processar em cada execução? → A: Descobrir a árvore oficial MLB, escolher até 10 folhas por maior volume de anúncios e desempatar por ID ascendente.
 - Q: Quando o líder de uma categoria falhar na revalidação por uma mudança confirmada da oferta, como a rotina deve continuar? → A: Promover e revalidar o próximo candidato qualificado da mesma categoria e recalcular a comparação entre líderes.
-- Q: Como a rotina deve tratar uma categoria configurada válida quando o Mercado Livre informa oficialmente que ela não possui ranking de mais vendidos? → A: Marcar a categoria como processada sem ranking e continuar; somente falhas técnicas tornam a execução incompleta.
+- Q: Como a rotina deve tratar uma categoria selecionada válida quando o Mercado Livre informa oficialmente que ela não possui ranking de mais vendidos? → A: Marcar a categoria como processada sem ranking e continuar; somente falhas técnicas tornam a execução incompleta.
 
 ### Session 2026-10-01
 
@@ -63,8 +63,8 @@ cada rejeição, sem realizar seleção final ou publicação.
 
 ### User Story 2 - Selecionar um líder de categoria elegível (Priority: P2)
 
-Como responsável pelo canal, quero que a rotina pesquise todas as categorias folha configuradas
-para o ambiente e escolha exatamente um dos líderes de categoria qualificados, para priorizar
+Como responsável pelo canal, quero que a rotina descubra categorias folha no catálogo oficial e
+pesquise até dez das categorias com maior volume de anúncios, escolhendo exatamente um dos líderes qualificados, para priorizar
 produtos com evidência de alta aceitação sem alegar uma liderança global que a origem não fornece.
 
 **Why this priority**: A seleção transforma o conjunto qualificado em uma decisão acionável e
@@ -76,7 +76,7 @@ pelas regras de ordenação definidas.
 
 **Acceptance Scenarios**:
 
-1. **Given** candidatos qualificados em cada categoria configurada, **When** a seleção é executada,
+1. **Given** candidatos qualificados em cada categoria selecionada, **When** a seleção é executada,
    **Then** somente o candidato qualificado mais bem posicionado de cada categoria avança como
    líder.
 2. **Given** líderes de categorias diferentes, **When** a seleção final é executada, **Then** vence,
@@ -85,7 +85,7 @@ pelas regras de ordenação definidas.
 3. **Given** rankings de categorias diferentes que não são comparáveis entre si, **When** a seleção
    termina, **Then** o resultado identifica o produto como líder de sua categoria e não como o mais
    vendido global do site.
-4. **Given** que uma ou mais categorias configuradas não puderam ser analisadas integralmente,
+4. **Given** que uma ou mais categorias selecionadas não puderam ser analisadas integralmente,
    **When** a pesquisa termina, **Then** a execução é marcada como incompleta e não produz produto
    selecionado.
 5. **Given** que um líder falha na revalidação por uma mudança confirmada da oferta, **When** ainda
@@ -138,11 +138,11 @@ publicar em canal externo.
 - Há empate em posição, desconto e comissão entre líderes de duas ou mais categorias.
 - A origem apresenta apenas um selo ou posição de popularidade, sem quantidade numérica de vendas.
 - A origem não apresenta indicador de vendas comparável para nenhum candidato.
-- A lista configurada está ausente, contém menos de uma ou mais de dez categorias, possui IDs
-  duplicados ou inclui uma categoria que não é uma folha válida do site MLB.
+- O catálogo oficial está indisponível, malformado, não contém folhas válidas ou uma folha
+  selecionada deixou de ser válida antes da consulta ao ranking.
 - O Mercado Livre informa oficialmente que uma categoria folha válida não possui ranking de mais
   vendidos.
-- Uma categoria configurada não pode ser consultada integralmente por falha técnica ou resposta
+- Uma categoria selecionada não pode ser consultada integralmente por falha técnica ou resposta
   incompleta.
 - O valor e o percentual de comissão exibidos divergem além do arredondamento monetário esperado.
 - O link de afiliado não pode ser gerado, está inválido ou conduz a outro produto ou variação.
@@ -162,11 +162,12 @@ publicar em canal externo.
   desconto atrativo.
 - **FR-002**: A rotina MUST pesquisar somente por interfaces oficiais documentadas e com
   autorização válida, encerrando sem seleção quando a autorização estiver ausente ou expirada.
-- **FR-003**: A rotina MUST exigir entre 1 e 10 identificadores únicos de categorias folha válidas
-  do site MLB configurados em cada ambiente e MUST analisar todas as categorias configuradas e
-  todas as referências únicas retornadas pelo ranking oficial de cada uma, sem truncamento, antes
-  de declarar a pesquisa completa; resposta oficial que informe ausência de ranking conta como
-  categoria processada sem candidatos.
+- **FR-003**: A rotina MUST obter a árvore de categorias do site MLB por interface oficial, selecionar
+  no máximo 10 categorias folha com maior `total_items_in_this_category` (empate por ID ascendente),
+  validar oficialmente as folhas selecionadas e analisar todas elas e todas as referências únicas
+  retornadas por seus rankings sem truncamento antes de declarar a pesquisa completa; resposta
+  oficial de ausência de ranking conta como categoria processada sem candidatos. IDs MUST NOT ser
+  exigidos por ENV.
 - **FR-004**: A rotina MUST identificar ofertas repetidas pelo produto e variação correspondentes,
   evitando avaliá-las mais de uma vez na mesma execução.
 - **FR-005**: Para cada oferta avaliada, a rotina MUST registrar o instante da coleta e a evidência
@@ -194,7 +195,7 @@ publicar em canal externo.
 - **FR-013**: Título, preços, comissão, imagem, disponibilidade e link MUST representar o mesmo
   produto e a mesma variação.
 - **FR-014**: Depois da qualificação, a rotina MUST ordenar separadamente os candidatos de cada
-  categoria configurada pelo indicador oficial de vendas e MUST manter somente o candidato
+  categoria selecionada pelo indicador oficial de vendas e MUST manter somente o candidato
   qualificado mais bem posicionado de cada categoria como líder.
 - **FR-015**: A seleção entre líderes de categorias MUST ser resolvida, nesta ordem, pelo maior
   percentual de desconto, maior valor esperado de comissão e identificador da categoria em ordem
@@ -232,10 +233,10 @@ publicar em canal externo.
 - **FR-027**: O scheduler MUST exigir periodicidade explicitamente configurada em cada ambiente,
   sem valor padrão, e fuso horário explicitamente identificado; MUST NOT registrar ou executar a
   rotina quando qualquer um desses valores estiver ausente ou inválido.
-- **FR-028**: A execução MUST registrar as categorias configuradas, processadas com ranking,
+- **FR-028**: A execução MUST registrar as categorias descobertas e selecionadas, processadas com ranking,
   processadas sem ranking e indisponíveis. Uma ausência de ranking informada oficialmente MUST
   contar como processamento concluído; falha técnica, resposta parcial ou contrato inválido para
-  qualquer categoria configurada MUST tornar a execução incompleta e impedir seleção.
+  qualquer categoria selecionada MUST tornar a execução incompleta e impedir seleção.
 - **FR-029**: O pacote final MUST identificar a categoria e a posição do produto nela e MUST NOT
   apresentar o selecionado como mais vendido global quando a origem fornecer somente rankings por
   categoria.
@@ -255,14 +256,14 @@ publicar em canal externo.
 ### Key Entities *(include if feature involves data)*
 
 - **Política de Qualificação**: Regras vigentes de moeda, faixas de ticket, desconto mínimo e
-  conjunto de 1 a 10 categorias folha usadas de forma uniforme em uma execução.
+  conjunto dinâmico de até 10 categorias folha usadas de forma uniforme em uma execução.
 - **Execução de Pesquisa**: Uma tentativa rastreável, com política aplicada, início, término,
   status, contagens, falhas e relação com as decisões de qualificação.
 - **Oferta Avaliada**: Retrato de um produto e variação na origem, incluindo preços, desconto,
   disponibilidade, elegibilidade, popularidade, comissão, título, imagem e resultado da avaliação.
 - **Decisão de Qualificação**: Resultado aceito ou rejeitado de uma oferta, critérios observados,
   motivos e evidências que permitem revisar a decisão.
-- **Fila de Candidatos da Categoria**: Candidatos qualificados de uma categoria configurada,
+- **Fila de Candidatos da Categoria**: Candidatos qualificados de uma categoria selecionada,
   ordenados pela posição oficial; expõe no máximo um líder corrente e permite promoção após
   invalidação confirmada.
 - **Evidência Afiliada**: Registro obtido manualmente por ferramenta oficial, vinculado ao produto e
@@ -301,8 +302,8 @@ publicar em canal externo.
   cookies, dados de sessão ou outros segredos do perfil.
 - **SC-009**: Em 100% dos cenários sem periodicidade ou fuso horário válidos, o scheduler encerra a
   inicialização antes de registrar ou executar a rotina.
-- **SC-010**: Em 100% dos cenários com lista de categorias ausente, vazia, duplicada, acima de dez
-  itens ou contendo categoria que não seja uma folha MLB válida, a rotina encerra antes da pesquisa.
+- **SC-010**: Em 100% dos cenários com catálogo oficial ausente/malformado ou sem folhas MLB válidas,
+  a rotina encerra antes da consulta aos rankings; nunca pesquisa mais de dez categorias.
 - **SC-011**: Em 100% dos cenários de revalidação com líderes invalidados e substitutos conhecidos,
   a rotina promove candidatos somente dentro da categoria correspondente, recalcula a comparação
   entre líderes e jamais seleciona candidato não revalidado.
@@ -321,9 +322,8 @@ publicar em canal externo.
   desconto percentual mínimo considerado atrativo; esta feature não define esses valores de
   negócio.
 - A moeda configurada será a mesma usada pelas ofertas no escopo pesquisado.
-- O responsável configura por ambiente entre 1 e 10 categorias folha MLB; toda execução processa
-  integralmente esse conjunto, sem amostragem, paginação parcial ou truncamento por limite global
-  de ofertas.
+- A aplicação descobre folhas MLB da árvore oficial e processa até dez, priorizadas por volume de
+  anúncios; todas as categorias selecionadas são consultadas sem truncamento global de ofertas.
 - A expressão "líder de categoria" se refere exclusivamente ao produto qualificado mais bem
   posicionado no ranking oficial daquela categoria; a rotina não estima vendas a partir de
   avaliações, não compara posições entre categorias e não alega liderança global.

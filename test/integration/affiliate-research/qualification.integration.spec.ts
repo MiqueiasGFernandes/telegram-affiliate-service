@@ -19,7 +19,6 @@ const config = parseEnvironment({
   MEDIUM_TICKET_MIN: '100',
   MEDIUM_TICKET_MAX: '500',
   MIN_DISCOUNT_PERCENT: '10',
-  MELI_CATEGORY_IDS: 'MLB1,MLB2',
   MELI_CLIENT_ID: 'id',
   MELI_CLIENT_SECRET: 'secret',
   MELI_REFRESH_TOKEN: 'refresh',
@@ -37,6 +36,10 @@ describe('affiliate research qualification flow', () => {
       observedAt: now,
     };
     const gateway: MercadoLivreGatewayPort = {
+      discoverLeafCategories: async () => [
+        { categoryId: 'MLB1', itemCount: 100 },
+        { categoryId: 'MLB2', itemCount: 50 },
+      ],
       validateLeafCategories: async () => undefined,
       getBestSellerRanking: async (id) =>
         id === 'MLB1'
