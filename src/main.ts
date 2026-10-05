@@ -4,9 +4,9 @@ import { AppModule } from './app.module.js';
 import { parseEnvironment } from './platform/config/environment-config.js';
 import { AffiliateResearchJob } from './modules/affiliate-research/infrastructure/scheduler/affiliate-research.job.js';
 import { errorDetails } from './modules/affiliate-research/application/errors/error-details.js';
+import { PublicHttpServer } from './platform/public-http-server.js';
 
 export async function bootstrap(): Promise<void> {
-  parseEnvironment(process.env);
   const config = parseEnvironment(process.env);
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log'],
@@ -18,6 +18,14 @@ export async function bootstrap(): Promise<void> {
     } finally {
       await app.close();
     }
+    return;
+  }
+  const httpServer = app.get(PublicHttpServer);
+  try {
+    await httpServer.listen(config.httpPort);
+  } catch (error) {
+    await app.close();
+    throw error;
   }
 }
 

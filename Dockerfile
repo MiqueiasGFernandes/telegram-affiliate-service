@@ -1,32 +1,43 @@
-FROM node:24-bookworm-slim AS build
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module.js';
+import { parseEnvironment } from './platform/config/environment-config.js';
+import { AffiliateResearchJob } from './modules/affiliate-research/infrastructure/scheduler/affiliate-research.job.js';
+import { errorDetails } from './modules/affiliate-research/application/errors/error-details.js';
+import { PublicHttpServer } from './platform/http/public-http-server.js';
 
-WORKDIR /app
-COPY package.json package-lock.json ./
-COPY .husky/install.mjs .husky/install.mjs
-RUN CI=true npm ci
+export async function bootstrap(): Promise<void> {
+  const config = parseEnvironment(process.env);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn', 'log'],
+  });
+  app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
+  if (config.executionMode === 'once') {
+    try {
+      await app.get(AffiliateResearchJob).runOnce();
+    } finally {
+      await app.close();
+    }
+    return;
+  }
+  const httpServer = app.get(PublicHttpServer);
+  try {
+    await httpServer.listen(config.httpPort);
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
+}
 
-COPY tsconfig.json tsconfig.build.json ./
-COPY src ./src
-RUN npm run build
-
-FROM node:24-bookworm-slim AS production-dependencies
-
-WORKDIR /app
-ENV NODE_ENV=production CI=true
-COPY package.json package-lock.json ./
-COPY .husky/install.mjs .husky/install.mjs
-RUN npm ci --omit=dev && npm cache clean --force
-
-FROM node:24-bookworm-slim AS runtime
-
-WORKDIR /app
-ENV NODE_ENV=production \
-    AFFILIATE_EVIDENCE_FILE=/etc/secrets/affiliate-evidence.json
-
-COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node package.json ./package.json
-
-RUN usermod -a -G 1000 node
-USER node
-CMD ["node", "dist/main.js"]
+if (import.meta.url === `file://${process.argv[1]}`) {
+  bootstrap().catch((error: unknown) => {
+    process.stderr.write(
+      `${JSON.stringify({
+        event: 'affiliate_research.bootstrap_failed',
+        code: 'BOOTSTRAP_FAILED',
+        ...errorDetails(error),
+      })}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

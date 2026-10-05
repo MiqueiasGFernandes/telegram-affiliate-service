@@ -5,7 +5,7 @@ export type ExecutionMode = 'scheduled' | 'once';
 
 export interface AppConfig {
   readonly nodeEnv: 'development' | 'test' | 'production';
-  readonly executionMode: ExecutionMode;
+    readonly httpPort: number;
   readonly logLevel: string;
   readonly scheduleCron: string;
   readonly scheduleTimezone: string;
@@ -159,7 +159,7 @@ export function parseEnvironment(env: NodeJS.ProcessEnv): AppConfig {
   );
   return {
     nodeEnv: nodeEnv as AppConfig['nodeEnv'],
-    executionMode: executionMode as ExecutionMode,
+        httpPort: integer(env, 'PORT', 10_000, 1, 65_535),
     logLevel: env['LOG_LEVEL'] || 'info',
     scheduleCron,
     scheduleTimezone,
